@@ -1,0 +1,26 @@
+import { Router } from "express";
+import authRoutes from "../modules/auth/auth.routes";
+import creditRoutes from "../modules/credit/credit.routes";
+import documentRoutes from "../modules/document/document.routes";
+import downloadRoutes from "../modules/download/download.routes";
+import favoriteRoutes from "../modules/favorite/favorite.routes";
+import paymentRoutes from "../modules/payment/payment.routes";
+import reportRoutes from "../modules/report/report.routes";
+import schoolRoutes from "../modules/school/school.routes";
+import subjectRoutes from "../modules/subject/subject.routes";
+import subscriptionRoutes from "../modules/subscription/subscription.routes";
+import userRoutes from "../modules/user/user.routes";
+
+const router = Router();
+router.use("/auth", authRoutes);
+router.use("/users", userRoutes);
+router.use("/schools", schoolRoutes);
+router.use("/subjects", subjectRoutes);
+router.use("/documents", documentRoutes);
+router.use("/downloads", downloadRoutes);
+router.use("/favorites", favoriteRoutes);
+router.use("/reports", reportRoutes);
+router.use("/subscriptions", subscriptionRoutes);
+router.use("/payments", paymentRoutes);
+router.use("/credits", creditRoutes);
+export default router;
