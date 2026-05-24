@@ -2,7 +2,7 @@ import { createHmac } from "node:crypto";
 
 export type VnpParams = Record<string, string>;
 
-function sortParams(params: VnpParams): VnpParams {
+export function sortParams(params: VnpParams): VnpParams {
   return Object.keys(params)
     .sort()
     .reduce<VnpParams>((acc, key) => {
@@ -11,12 +11,23 @@ function sortParams(params: VnpParams): VnpParams {
     }, {});
 }
 
-export function signVnpay(params: VnpParams, secret: string): string {
-  const sorted = sortParams(params);
-  const data = Object.entries(sorted)
-    .map(([k, v]) => `${k}=${encodeURIComponent(v)}`)
+function toQueryString(params: VnpParams): string {
+  return Object.entries(sortParams(params))
+    .map(([key, value]) =>
+      `${encodeURIComponent(key)}=${encodeURIComponent(value).replace(/%20/g, "+")}`,
+    )
     .join("&");
+}
+
+export function signVnpay(params: VnpParams, secret: string): string {
+  const data = toQueryString(params);
   return createHmac("sha512", secret).update(data, "utf8").digest("hex");
+}
+
+export function buildVnpayUrl(baseUrl: string, params: VnpParams, secret: string): string {
+  const data = toQueryString(params);
+  const secureHash = createHmac("sha512", secret).update(data, "utf8").digest("hex");
+  return `${baseUrl}?${data}&vnp_SecureHash=${secureHash}`;
 }
 
 export function verifyVnpay(params: VnpParams, secureHash: string, secret: string): boolean {

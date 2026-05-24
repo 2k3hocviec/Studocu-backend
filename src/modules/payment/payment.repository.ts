@@ -8,6 +8,7 @@ export const paymentRepository = {
     prisma.payment.create({ data: { userId, planId, amount, method }, include: { plan: true } }),
   findOwned: (id: number, userId: number) => prisma.payment.findFirst({ where: { id, userId }, include: { plan: true } }),
   findById: (id: number) => prisma.payment.findUnique({ where: { id }, include: { plan: true } }),
+  fail: (id: number) => prisma.payment.update({ where: { id }, data: { status: PaymentStatus.FAILED } }),
   confirmAndSubscribe: (id: number, userId: number, planId: number, durationDays: number) => {
     const startDate = new Date();
     const endDate = new Date(startDate.getTime() + durationDays * 24 * 60 * 60 * 1000);

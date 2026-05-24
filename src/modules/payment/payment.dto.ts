@@ -12,4 +12,7 @@ export const paymentHistorySchema = paginationSchema;
 export const vnpayReturnQuerySchema = z.object({
   vnp_ResponseCode: z.string().min(1),
   vnp_SecureHash: z.string().min(1),
-});
+  vnp_TxnRef: z.string().min(1),
+  vnp_Amount: z.string().regex(/^\d+$/),
+  vnp_TransactionStatus: z.string().optional(),
+}).passthrough();

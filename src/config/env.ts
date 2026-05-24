@@ -15,7 +15,9 @@ const envSchema = z.object({
   SMTP_FROM: z.string().email().default("no-reply@example.com"),
   VNPAY_TMN_CODE: z.string().optional(),
   VNPAY_HASH_SECRET: z.string().optional(),
+  VNPAY_PAYMENT_URL: z.string().url().default("https://sandbox.vnpayment.vn/paymentv2/vpcpay.html"),
   VNPAY_RETURN_URL: z.string().url().optional(),
+  FRONTEND_URL: z.string().url().default("http://localhost:5000"),
 });
 
 const parsed = envSchema.safeParse(process.env);
