@@ -49,3 +49,6 @@ npm run db:studio
 OTP được trả trong trường `debugOtp` khi `NODE_ENV` không phải `production` để
 phục vụ phát triển local. Refresh token logout/rotation hiện được revoke trong
 bộ nhớ tiến trình do schema được cung cấp không có bảng lưu refresh token.
+
+VNPAY mock: tạo payment với `method=VNPAY`, API sẽ trả `checkoutUrl` trỏ về
+`/api/v1/payments/vnpay/return` (giả lập), sau đó gọi URL đó (kèm auth) để confirm.

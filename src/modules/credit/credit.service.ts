@@ -12,4 +12,5 @@ export const creditService = {
     const [items, total] = await creditRepository.transactions(userId, page, limit, documentId);
     return paginated(items, total, page, limit);
   },
+  adminAdjust: (userId: number, amount: number) => creditRepository.adminAdjust(userId, amount),
 };

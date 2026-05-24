@@ -11,3 +11,17 @@ export const mockConfirm: RequestHandler = async (req, res, next) => {
 export const history: RequestHandler = async (req, res, next) => {
   try { sendSuccess(res, await paymentService.history(req.user!.userId, Number(req.query.page), Number(req.query.limit))); } catch (error) { next(error); }
 };
+
+export const vnpayReturn: RequestHandler = async (req, res, next) => {
+  try {
+    const query = req.query as Record<string, unknown>;
+    sendSuccess(
+      res,
+      await paymentService.vnpayReturn(req.user!.userId, Number(query.vnp_TxnRef), {
+        ...Object.fromEntries(Object.entries(query).map(([k, v]) => [k, String(v)])),
+        vnp_ResponseCode: String(query.vnp_ResponseCode),
+        vnp_SecureHash: String(query.vnp_SecureHash),
+      }),
+    );
+  } catch (error) { next(error); }
+};

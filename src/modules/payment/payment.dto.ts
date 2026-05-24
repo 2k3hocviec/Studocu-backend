@@ -8,3 +8,8 @@ export const createPaymentSchema = z.object({
 });
 export const paymentIdSchema = z.object({ id: z.coerce.number().int().positive() });
 export const paymentHistorySchema = paginationSchema;
+
+export const vnpayReturnQuerySchema = z.object({
+  vnp_ResponseCode: z.string().min(1),
+  vnp_SecureHash: z.string().min(1),
+});
