@@ -25,7 +25,7 @@ export const documentService = {
     }
     await documentRepository.incrementView(id);
     const premiumAccess = actor ? Boolean(await documentRepository.findActiveSubscription(actor.userId)) : false;
-    const fullAccess = owner || isModerator(actor) || premiumAccess;
+    const fullAccess = !document.isPremium || owner || isModerator(actor) || premiumAccess;
     const previewLimit = actor ? 3 : 2;
     return {
       ...document,

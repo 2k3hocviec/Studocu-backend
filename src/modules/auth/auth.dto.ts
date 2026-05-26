@@ -4,6 +4,10 @@ export const registerSchema = z.object({
   fullName: z.string().min(2).max(100),
   email: z.string().email().transform((value) => value.toLowerCase()),
   password: z.string().min(8).max(100),
+  confirmPassword: z.string().min(8).max(100),
+}).refine((input) => input.password === input.confirmPassword, {
+  message: "Passwords do not match",
+  path: ["confirmPassword"],
 });
 export const verifyEmailSchema = z.object({
   email: z.string().email().transform((value) => value.toLowerCase()),
