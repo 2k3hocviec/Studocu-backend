@@ -16,4 +16,6 @@ router.patch("/:id", authenticate, validate(documentIdSchema, "params"), validat
 router.delete("/:id", authenticate, validate(documentIdSchema, "params"), controller.remove);
 router.patch("/:id/approve", authenticate, allowRoles(UserRole.ADMIN, UserRole.MODERATOR), validate(documentIdSchema, "params"), controller.approve);
 router.patch("/:id/reject", authenticate, allowRoles(UserRole.ADMIN, UserRole.MODERATOR), validate(documentIdSchema, "params"), validate(rejectDocumentSchema), controller.reject);
+router.patch("/:id/hide", authenticate, allowRoles(UserRole.ADMIN, UserRole.MODERATOR), validate(documentIdSchema, "params"), controller.hide);
+router.patch("/:id/unhide", authenticate, allowRoles(UserRole.ADMIN, UserRole.MODERATOR), validate(documentIdSchema, "params"), controller.unhide);
 export default router;
