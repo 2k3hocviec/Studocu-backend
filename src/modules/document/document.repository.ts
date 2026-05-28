@@ -74,9 +74,16 @@ export const documentRepository = {
         data: { status: DocumentStatus.APPROVED, approvedBy: moderatorId, approvedAt: new Date(), rejectReason: null },
         include: detailInclude,
       });
-      if (reward) {
-        await tx.user.update({ where: { id: uploaderId }, data: { creditBalance: { increment: 2 } } });
-        await tx.creditTransaction.create({ data: { userId: uploaderId, documentId: id, type: CreditTransactionType.EARN_UPLOAD, amount: 2 } });
+      // Chỉ cộng credit nếu chưa từng cộng (creditEarned = false)
+      if (reward && !document.creditEarned) {
+        const CREDIT_AMOUNT = 5;
+        await tx.user.update({ where: { id: uploaderId }, data: { creditBalance: { increment: CREDIT_AMOUNT } } });
+        await tx.creditTransaction.create({ data: { userId: uploaderId, documentId: id, type: CreditTransactionType.EARN_UPLOAD, amount: CREDIT_AMOUNT } });
+        // Mark đã cộng credit
+        await tx.document.update({
+          where: { id },
+          data: { creditEarned: true },
+        });
       }
       return document;
     }),

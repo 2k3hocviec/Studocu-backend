@@ -153,6 +153,7 @@ model Document {
   isPremium     Boolean        @default(false) @map("is_premium")
   viewCount     Int            @default(0) @map("view_count")
   downloadCount Int            @default(0) @map("download_count")
+  creditEarned  Boolean        @default(false) @map("credit_earned")
   rejectReason  String?        @map("reject_reason")
   approvedBy    Int?           @map("approved_by")
   approvedAt    DateTime?      @map("approved_at")
