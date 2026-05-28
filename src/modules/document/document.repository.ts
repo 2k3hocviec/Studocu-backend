@@ -1,4 +1,4 @@
-import { CreditTransactionType, DocumentStatus, DocumentType, Prisma } from "@prisma/client";
+import { CreditTransactionType, DocumentStatus, DocumentType, Prisma, ReactionType } from "@prisma/client";
 import { prisma } from "../../database/prisma";
 import { pagination } from "../../utils/pagination";
 
@@ -32,7 +32,7 @@ const detailInclude = {
 
 export const documentRepository = {
   list: (page: number, limit: number, filters: { schoolId?: number, subjectId?: number, type?: DocumentType, search?: string, status?: DocumentStatus, isAdmin?: boolean }) => {
-    const where: Prisma.DocumentWhereInput = { 
+    const where: Prisma.DocumentWhereInput = {
       deletedAt: null,
     };
     if (!filters.isAdmin) {
@@ -47,11 +47,42 @@ export const documentRepository = {
     if (filters.type) where.documentType = filters.type;
     if (filters.search) where.OR = [{ title: { contains: filters.search, mode: "insensitive" } }, { description: { contains: filters.search, mode: "insensitive" } }];
     return Promise.all([
-      prisma.document.findMany({ where, ...pagination(page, limit), orderBy: { createdAt: "desc" }, include: { uploader: { select: { id: true, fullName: true } }, school: true, subject: true } }),
+      prisma.document.findMany({
+        where,
+        ...pagination(page, limit),
+        orderBy: { createdAt: "desc" },
+        include: {
+          uploader: { select: { id: true, fullName: true } },
+          school: true,
+          subject: true,
+          documentFile: { select: { totalPages: true } },
+          previews: {
+            orderBy: { pageNumber: "asc" },
+            take: 1,
+            select: { imageUrl: true },
+          },
+        },
+      }),
       prisma.document.count({ where }),
     ]);
   },
   findDetail: (id: number) => prisma.document.findFirst({ where: { id, deletedAt: null }, include: detailInclude }),
+  reactionCounts: (documentId: number) =>
+    prisma.documentReaction.groupBy({
+      by: ["type"],
+      where: { documentId },
+      _count: { type: true },
+    }),
+  findReaction: (documentId: number, userId: number) =>
+    prisma.documentReaction.findUnique({ where: { userId_documentId: { userId, documentId } } }),
+  setReaction: (documentId: number, userId: number, type: ReactionType) =>
+    prisma.documentReaction.upsert({
+      where: { userId_documentId: { userId, documentId } },
+      update: { type },
+      create: { userId, documentId, type },
+    }),
+  removeReaction: (documentId: number, userId: number) =>
+    prisma.documentReaction.deleteMany({ where: { userId, documentId } }),
   findActiveSubscription: (userId: number) =>
     prisma.subscription.findFirst({ where: { userId, status: "ACTIVE", endDate: { gt: new Date() } } }),
   incrementView: (id: number) => prisma.document.update({ where: { id }, data: { viewCount: { increment: 1 } } }),
@@ -105,4 +136,60 @@ export const documentRepository = {
       data: { status: DocumentStatus.APPROVED, approvedBy: moderatorId, approvedAt: new Date() },
       include: detailInclude,
     }),
+  // Kiểm tra user đã unlock full access chưa
+  hasFullAccess: (documentId: number, userId: number) =>
+    prisma.download.findFirst({
+      where: { documentId, userId },
+    }),
+  // Unlock full access - trừ credit, tạo Download record
+  unlockFullAccess: (documentId: number, userId: number) =>
+    prisma.$transaction(async (tx) => {
+      const CREDIT_COST = 1;
+
+      // 1. Check user có đủ credit không
+      const user = await tx.user.findUnique({ where: { id: userId } });
+      if (!user || user.creditBalance < CREDIT_COST) {
+        throw new Error("Insufficient credits");
+      }
+
+      // 2. Trừ credit
+      await tx.user.update({
+        where: { id: userId },
+        data: { creditBalance: { decrement: CREDIT_COST } },
+      });
+
+      // 3. Record credit transaction
+      await tx.creditTransaction.create({
+        data: {
+          userId,
+          documentId,
+          type: CreditTransactionType.USE_DOWNLOAD,
+          amount: CREDIT_COST,
+        },
+      });
+
+      // 4. Record download (unlock full access)
+      return tx.download.upsert({
+        where: { userId_documentId: { userId, documentId } },
+        update: { downloadedAt: new Date() },
+        create: {
+          userId,
+          documentId,
+          creditUsed: CREDIT_COST,
+        },
+      });
+    }),
+  // Record download
+  recordDownload: (documentId: number, userId: number) =>
+    prisma.download.upsert({
+      where: { userId_documentId: { userId, documentId } },
+      update: { downloadedAt: new Date() },
+      create: {
+        userId,
+        documentId,
+        creditUsed: 0,
+      },
+    }),
+  // Update download count
+  incrementDownload: (id: number) => prisma.document.update({ where: { id }, data: { downloadCount: { increment: 1 } } }),
 };

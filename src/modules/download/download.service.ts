@@ -19,7 +19,7 @@ export const downloadService = {
       }
     }
     await downloadRepository.record(userId, documentId, creditUsed);
-    return { fileUrl: document.documentFile.fileUrl, creditUsed };
+    return { fileUrl: `/documents/${documentId}/file?download=1`, creditUsed };
   },
   async history(userId: number, page: number, limit: number) {
     const [items, total] = await downloadRepository.history(userId, page, limit);

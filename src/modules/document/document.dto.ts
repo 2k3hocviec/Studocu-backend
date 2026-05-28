@@ -1,4 +1,4 @@
-import { DocumentStatus, DocumentType, FileType, StorageProvider } from "@prisma/client";
+import { DocumentStatus, DocumentType, FileType, ReactionType, StorageProvider } from "@prisma/client";
 import { z } from "zod";
 import { paginationSchema } from "../../utils/pagination";
 
@@ -42,3 +42,4 @@ export const updateDocumentSchema = z.object({
   isPremium: z.boolean().optional(),
 });
 export const rejectDocumentSchema = z.object({ reason: z.string().min(3).max(500) });
+export const reactionSchema = z.object({ type: z.nativeEnum(ReactionType).nullable() });
