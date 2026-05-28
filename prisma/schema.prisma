@@ -1,0 +1,286 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum UserStatus {
+  PENDING_VERIFY
+  ACTIVE
+  BANNED
+}
+
+enum UserRole {
+  USER
+  ADMIN
+  MODERATOR
+}
+
+enum OtpType {
+  VERIFY_EMAIL
+  FORGOT_PASSWORD
+}
+
+enum DocumentType {
+  LECTURE
+  EXAM
+  NOTE
+  ASSIGNMENT
+  OTHER
+}
+
+enum DocumentStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  HIDDEN
+}
+
+enum FileType {
+  PDF
+  DOCX
+  PPTX
+}
+
+enum StorageProvider {
+  CLOUDINARY
+  S3
+}
+
+enum ReportStatus {
+  PENDING
+  RESOLVED
+  REJECTED
+}
+
+enum SubscriptionStatus {
+  ACTIVE
+  EXPIRED
+  CANCELLED
+}
+
+enum PaymentMethod {
+  MOCK
+  VNPAY
+  MOMO
+}
+
+enum PaymentStatus {
+  PENDING
+  PAID
+  FAILED
+  REFUNDED
+}
+
+enum CreditTransactionType {
+  EARN_UPLOAD
+  USE_DOWNLOAD
+  ADMIN_ADJUST
+}
+
+model User {
+  id             Int        @id @default(autoincrement())
+  fullName       String     @map("full_name")
+  email          String     @unique
+  passwordHash   String     @map("password_hash")
+  avatarUrl      String?    @map("avatar_url")
+  status         UserStatus @default(PENDING_VERIFY)
+  role           UserRole   @default(USER)
+  creditBalance  Float      @default(0) @map("credit_balance")
+  createdAt      DateTime   @default(now()) @map("created_at")
+  updatedAt      DateTime   @updatedAt @map("updated_at")
+  documents          Document[]          @relation("UploaderDocuments")
+  approvedDocuments  Document[]          @relation("ApproverDocuments")
+  downloads          Download[]
+  favorites          Favorite[]
+  reports            Report[]            @relation("ReporterReports")
+  handledReports     Report[]            @relation("HandlerReports")
+  subscriptions      Subscription[]
+  payments           Payment[]
+  creditTransactions CreditTransaction[]
+  @@map("users")
+}
+
+model EmailOtp {
+  id        Int      @id @default(autoincrement())
+  email     String
+  otpCode   String   @map("otp_code")
+  type      OtpType
+  expiredAt DateTime @map("expired_at")
+  used      Boolean  @default(false)
+  createdAt DateTime @default(now()) @map("created_at")
+  @@map("email_otps")
+}
+
+model School {
+  id          Int      @id @default(autoincrement())
+  name        String
+  slug        String   @unique
+  description String?
+  createdAt   DateTime @default(now()) @map("created_at")
+  subjects    Subject[]
+  documents   Document[]
+  @@map("schools")
+}
+
+model Subject {
+  id          Int      @id @default(autoincrement())
+  schoolId    Int      @map("school_id")
+  name        String
+  slug        String   @unique
+  description String?
+  createdAt   DateTime @default(now()) @map("created_at")
+  school      School     @relation(fields: [schoolId], references: [id])
+  documents   Document[]
+  @@map("subjects")
+}
+
+model Document {
+  id            Int            @id @default(autoincrement())
+  uploaderId    Int            @map("uploader_id")
+  schoolId      Int            @map("school_id")
+  subjectId     Int            @map("subject_id")
+  title         String
+  description   String?
+  documentType  DocumentType   @map("document_type")
+  status        DocumentStatus @default(PENDING)
+  isPremium     Boolean        @default(false) @map("is_premium")
+  viewCount     Int            @default(0) @map("view_count")
+  downloadCount Int            @default(0) @map("download_count")
+  rejectReason  String?        @map("reject_reason")
+  approvedBy    Int?           @map("approved_by")
+  approvedAt    DateTime?      @map("approved_at")
+  createdAt     DateTime       @default(now()) @map("created_at")
+  updatedAt     DateTime       @updatedAt @map("updated_at")
+  uploader           User               @relation("UploaderDocuments", fields: [uploaderId], references: [id])
+  approver           User?              @relation("ApproverDocuments", fields: [approvedBy], references: [id])
+  school             School             @relation(fields: [schoolId], references: [id])
+  subject            Subject            @relation(fields: [subjectId], references: [id])
+  documentFile       DocumentFile?
+  previews           DocumentPreview[]
+  downloads          Download[]
+  favorites          Favorite[]
+  reports            Report[]
+  creditTransactions CreditTransaction[]
+  @@map("documents")
+}
+
+model DocumentFile {
+  id               Int             @id @default(autoincrement())
+  documentId       Int             @unique @map("document_id")
+  fileUrl          String          @map("file_url")
+  previewUrl       String?         @map("preview_url")
+  originalFilename String          @map("original_filename")
+  fileType         FileType        @map("file_type")
+  fileSize         Int             @map("file_size")
+  totalPages       Int?            @map("total_pages")
+  storageProvider  StorageProvider @map("storage_provider")
+  createdAt        DateTime        @default(now()) @map("created_at")
+  document Document @relation(fields: [documentId], references: [id])
+  @@map("document_files")
+}
+
+model DocumentPreview {
+  id         Int      @id @default(autoincrement())
+  documentId Int      @map("document_id")
+  pageNumber Int      @map("page_number")
+  imageUrl   String   @map("image_url")
+  isBlurred  Boolean  @default(false) @map("is_blurred")
+  createdAt  DateTime @default(now()) @map("created_at")
+  document Document @relation(fields: [documentId], references: [id])
+  @@map("document_previews")
+}
+
+model Download {
+  id           Int      @id @default(autoincrement())
+  userId       Int      @map("user_id")
+  documentId   Int      @map("document_id")
+  downloadedAt DateTime @default(now()) @map("downloaded_at")
+  creditUsed   Float    @default(0) @map("credit_used")
+  user     User     @relation(fields: [userId], references: [id])
+  document Document @relation(fields: [documentId], references: [id])
+  @@map("downloads")
+}
+
+model Favorite {
+  id         Int      @id @default(autoincrement())
+  userId     Int      @map("user_id")
+  documentId Int      @map("document_id")
+  createdAt  DateTime @default(now()) @map("created_at")
+  user     User     @relation(fields: [userId], references: [id])
+  document Document @relation(fields: [documentId], references: [id])
+  @@unique([userId, documentId])
+  @@map("favorites")
+}
+
+model Report {
+  id          Int          @id @default(autoincrement())
+  reporterId  Int          @map("reporter_id")
+  documentId  Int          @map("document_id")
+  reason      String
+  description String?
+  status      ReportStatus @default(PENDING)
+  handledBy   Int?         @map("handled_by")
+  handledAt   DateTime?    @map("handled_at")
+  createdAt   DateTime     @default(now()) @map("created_at")
+  reporter User     @relation("ReporterReports", fields: [reporterId], references: [id])
+  handler  User?    @relation("HandlerReports", fields: [handledBy], references: [id])
+  document Document @relation(fields: [documentId], references: [id])
+  @@map("reports")
+}
+
+model SubscriptionPlan {
+  id            Int      @id @default(autoincrement())
+  name          String
+  price         Float
+  durationDays  Int      @map("duration_days")
+  downloadLimit Int      @map("download_limit")
+  description   String?
+  isActive      Boolean  @default(true) @map("is_active")
+  createdAt     DateTime @default(now()) @map("created_at")
+  subscriptions Subscription[]
+  payments      Payment[]
+  @@map("subscription_plans")
+}
+
+model Subscription {
+  id        Int                @id @default(autoincrement())
+  userId    Int                @map("user_id")
+  planId    Int                @map("plan_id")
+  startDate DateTime           @map("start_date")
+  endDate   DateTime           @map("end_date")
+  status    SubscriptionStatus @default(ACTIVE)
+  createdAt DateTime           @default(now()) @map("created_at")
+  user User             @relation(fields: [userId], references: [id])
+  plan SubscriptionPlan @relation(fields: [planId], references: [id])
+  @@map("subscriptions")
+}
+
+model Payment {
+  id        Int           @id @default(autoincrement())
+  userId    Int           @map("user_id")
+  planId    Int           @map("plan_id")
+  amount    Float
+  method    PaymentMethod
+  status    PaymentStatus @default(PENDING)
+  paidAt    DateTime?     @map("paid_at")
+  createdAt DateTime      @default(now()) @map("created_at")
+  user User             @relation(fields: [userId], references: [id])
+  plan SubscriptionPlan @relation(fields: [planId], references: [id])
+  @@map("payments")
+}
+
+model CreditTransaction {
+  id         Int                   @id @default(autoincrement())
+  userId     Int                   @map("user_id")
+  documentId Int?                  @map("document_id")
+  type       CreditTransactionType
+  amount     Float
+  createdAt  DateTime              @default(now()) @map("created_at")
+  user     User      @relation(fields: [userId], references: [id])
+  document Document? @relation(fields: [documentId], references: [id])
+  @@map("credit_transactions")
+}
