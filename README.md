@@ -15,7 +15,7 @@ npm run dev
 Cập nhật `DATABASE_URL`, `JWT_ACCESS_SECRET` và `JWT_REFRESH_SECRET` trong
 `.env` trước khi chạy. Để upload file lên Cloudinary, thiết lập thêm
 `CLOUDINARY_URL`; endpoint upload cũng chấp nhận `fileUrl` đã được tải lên sẵn.
-Để tạo preview 30% cho DOCX/PPTX, cài LibreOffice và đảm bảo lệnh `soffice`
+Để tạo preview cho DOCX/PPTX, cài LibreOffice và đảm bảo lệnh `soffice`
 chạy được trong terminal; nếu không, thiết lập `SOFFICE_PATH` trỏ tới
 `soffice.exe`. PDF preview không cần LibreOffice.
 Thiết lập `SMTP_HOST`, `SMTP_USER`, `SMTP_PASS` và `SMTP_FROM` để gửi OTP qua
