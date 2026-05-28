@@ -1,6 +1,7 @@
 import { Router } from "express";
 import authRoutes from "../modules/auth/auth.routes";
 import creditRoutes from "../modules/credit/credit.routes";
+import dashboardRoutes from "../modules/dashboard/dashboard.routes";
 import documentRoutes from "../modules/document/document.routes";
 import downloadRoutes from "../modules/download/download.routes";
 import favoriteRoutes from "../modules/favorite/favorite.routes";
@@ -23,4 +24,5 @@ router.use("/reports", reportRoutes);
 router.use("/subscriptions", subscriptionRoutes);
 router.use("/payments", paymentRoutes);
 router.use("/credits", creditRoutes);
+router.use("/dashboard", dashboardRoutes);
 export default router;

@@ -11,8 +11,16 @@ function isModerator(actor: Actor) {
 }
 
 export const documentService = {
-  async list(page: number, limit: number, filters: { schoolId?: number; subjectId?: number; type?: NewDocumentData["documentType"]; search?: string }) {
-    const [items, total] = await documentRepository.listApproved(page, limit, filters.schoolId, filters.subjectId, filters.type, filters.search);
+  async list(page: number, limit: number, filters: { schoolId?: number; subjectId?: number; type?: NewDocumentData["documentType"]; search?: string; status?: DocumentStatus }, actor?: Actor) {
+    const isAdmin = actor?.role === UserRole.ADMIN || actor?.role === UserRole.MODERATOR;
+    const [items, total] = await documentRepository.list(page, limit, {
+      schoolId: filters.schoolId,
+      subjectId: filters.subjectId,
+      type: filters.type,
+      search: filters.search,
+      status: filters.status,
+      isAdmin,
+    });
     return paginated(items, total, page, limit);
   },
 
@@ -57,10 +65,13 @@ export const documentService = {
     return documentRepository.update(id, data);
   },
 
-  async remove(id: number, userId: number) {
+  async remove(id: number, userId: number, role: UserRole) {
     const document = await documentRepository.findDetail(id);
     if (!document) throw new AppError("Document not found", 404);
-    if (document.uploaderId !== userId) throw new AppError("You can only delete your own document", 403);
+    const isAdmin = role === UserRole.ADMIN || role === UserRole.MODERATOR;
+    if (!isAdmin && document.uploaderId !== userId) {
+      throw new AppError("You can only delete your own document", 403);
+    }
     await documentRepository.remove(id);
     return { message: "Document deleted" };
   },
@@ -74,5 +85,13 @@ export const documentService = {
   async reject(id: number, moderatorId: number, reason: string) {
     if (!(await documentRepository.findDetail(id))) throw new AppError("Document not found", 404);
     return documentRepository.reject(id, moderatorId, reason);
+  },
+  async hide(id: number, moderatorId: number) {
+    if (!(await documentRepository.findDetail(id))) throw new AppError("Document not found", 404);
+    return documentRepository.hide(id, moderatorId);
+  },
+  async unhide(id: number, moderatorId: number) {
+    if (!(await documentRepository.findDetail(id))) throw new AppError("Document not found", 404);
+    return documentRepository.unhide(id, moderatorId);
   },
 };

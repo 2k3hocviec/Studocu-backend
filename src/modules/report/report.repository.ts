@@ -12,5 +12,17 @@ export const reportRepository = {
       prisma.report.count(),
     ]),
   updateStatus: (id: number, status: ReportStatus, handledBy: number) =>
-    prisma.report.update({ where: { id }, data: { status, handledBy, handledAt: new Date() } }),
+    prisma.$transaction(async (tx) => {
+      const report = await tx.report.update({
+        where: { id },
+        data: { status, handledBy, handledAt: new Date() },
+      });
+      if (status === ReportStatus.RESOLVED) {
+        await tx.document.update({
+          where: { id: report.documentId },
+          data: { status: "HIDDEN", approvedBy: handledBy, approvedAt: new Date() },
+        });
+      }
+      return report;
+    }),
 };

@@ -31,18 +31,27 @@ const detailInclude = {
 };
 
 export const documentRepository = {
-  listApproved: (page: number, limit: number, schoolId?: number, subjectId?: number, type?: DocumentType, search?: string) => {
-    const where: Prisma.DocumentWhereInput = { status: DocumentStatus.APPROVED };
-    if (schoolId) where.schoolId = schoolId;
-    if (subjectId) where.subjectId = subjectId;
-    if (type) where.documentType = type;
-    if (search) where.OR = [{ title: { contains: search, mode: "insensitive" } }, { description: { contains: search, mode: "insensitive" } }];
+  list: (page: number, limit: number, filters: { schoolId?: number, subjectId?: number, type?: DocumentType, search?: string, status?: DocumentStatus, isAdmin?: boolean }) => {
+    const where: Prisma.DocumentWhereInput = { 
+      deletedAt: null,
+    };
+    if (!filters.isAdmin) {
+      where.status = DocumentStatus.APPROVED;
+      where.school = { deletedAt: null };
+      where.subject = { deletedAt: null };
+    } else if (filters.status) {
+      where.status = filters.status;
+    }
+    if (filters.schoolId) where.schoolId = filters.schoolId;
+    if (filters.subjectId) where.subjectId = filters.subjectId;
+    if (filters.type) where.documentType = filters.type;
+    if (filters.search) where.OR = [{ title: { contains: filters.search, mode: "insensitive" } }, { description: { contains: filters.search, mode: "insensitive" } }];
     return Promise.all([
       prisma.document.findMany({ where, ...pagination(page, limit), orderBy: { createdAt: "desc" }, include: { uploader: { select: { id: true, fullName: true } }, school: true, subject: true } }),
       prisma.document.count({ where }),
     ]);
   },
-  findDetail: (id: number) => prisma.document.findUnique({ where: { id }, include: detailInclude }),
+  findDetail: (id: number) => prisma.document.findFirst({ where: { id, deletedAt: null }, include: detailInclude }),
   findActiveSubscription: (userId: number) =>
     prisma.subscription.findFirst({ where: { userId, status: "ACTIVE", endDate: { gt: new Date() } } }),
   incrementView: (id: number) => prisma.document.update({ where: { id }, data: { viewCount: { increment: 1 } } }),
@@ -57,7 +66,7 @@ export const documentRepository = {
       include: detailInclude,
     }),
   update: (id: number, data: Prisma.DocumentUpdateInput) => prisma.document.update({ where: { id }, data, include: detailInclude }),
-  remove: (id: number) => prisma.document.delete({ where: { id } }),
+  remove: (id: number) => prisma.document.update({ where: { id }, data: { deletedAt: new Date() } }),
   approveWithReward: (id: number, moderatorId: number, uploaderId: number, reward: boolean) =>
     prisma.$transaction(async (tx) => {
       const document = await tx.document.update({
@@ -75,6 +84,18 @@ export const documentRepository = {
     prisma.document.update({
       where: { id },
       data: { status: DocumentStatus.REJECTED, approvedBy: moderatorId, approvedAt: new Date(), rejectReason: reason },
+      include: detailInclude,
+    }),
+  hide: (id: number, moderatorId: number) =>
+    prisma.document.update({
+      where: { id },
+      data: { status: DocumentStatus.HIDDEN, approvedBy: moderatorId, approvedAt: new Date() },
+      include: detailInclude,
+    }),
+  unhide: (id: number, moderatorId: number) =>
+    prisma.document.update({
+      where: { id },
+      data: { status: DocumentStatus.APPROVED, approvedBy: moderatorId, approvedAt: new Date() },
       include: detailInclude,
     }),
 };

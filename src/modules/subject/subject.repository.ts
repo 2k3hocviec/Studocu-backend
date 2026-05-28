@@ -4,7 +4,7 @@ import { pagination } from "../../utils/pagination";
 
 export const subjectRepository = {
   list: (page: number, limit: number, schoolId?: number, search?: string) => {
-    const where: Prisma.SubjectWhereInput = {};
+    const where: Prisma.SubjectWhereInput = { deletedAt: null, school: { deletedAt: null } };
     if (schoolId) where.schoolId = schoolId;
     if (search) where.name = { contains: search, mode: "insensitive" };
     return Promise.all([
@@ -13,7 +13,7 @@ export const subjectRepository = {
     ]);
   },
   create: (data: Prisma.SubjectUncheckedCreateInput) => prisma.subject.create({ data }),
-  findById: (id: number) => prisma.subject.findUnique({ where: { id } }),
+  findById: (id: number) => prisma.subject.findFirst({ where: { id, deletedAt: null } }),
   update: (id: number, data: Prisma.SubjectUncheckedUpdateInput) => prisma.subject.update({ where: { id }, data }),
-  remove: (id: number) => prisma.subject.delete({ where: { id } }),
+  remove: (id: number) => prisma.subject.update({ where: { id }, data: { deletedAt: new Date() } }),
 };

@@ -1,4 +1,4 @@
-import { DocumentType, FileType, StorageProvider } from "@prisma/client";
+import { DocumentStatus, DocumentType, FileType, StorageProvider } from "@prisma/client";
 import { z } from "zod";
 import { paginationSchema } from "../../utils/pagination";
 
@@ -7,6 +7,7 @@ export const listDocumentsSchema = paginationSchema.extend({
   subjectId: z.coerce.number().int().positive().optional(),
   type: z.nativeEnum(DocumentType).optional(),
   search: z.string().optional(),
+  status: z.nativeEnum(DocumentStatus).optional(),
 });
 export const documentIdSchema = z.object({ id: z.coerce.number().int().positive() });
 export const documentIdParamSchema = z.object({ documentId: z.coerce.number().int().positive() });
