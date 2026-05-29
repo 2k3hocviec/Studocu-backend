@@ -8,6 +8,12 @@ export const getMe: RequestHandler = async (req, res, next) => {
 export const updateMe: RequestHandler = async (req, res, next) => {
   try { sendSuccess(res, await userService.updateMe(req.user!.userId, req.body)); } catch (error) { next(error); }
 };
+export const updateAvatar: RequestHandler = async (req, res, next) => {
+  try { sendSuccess(res, await userService.updateAvatar(req.user!.userId, req.file)); } catch (error) { next(error); }
+};
+export const changePassword: RequestHandler = async (req, res, next) => {
+  try { sendSuccess(res, await userService.changePassword(req.user!.userId, req.body)); } catch (error) { next(error); }
+};
 export const list: RequestHandler = async (req, res, next) => {
   try { sendSuccess(res, await userService.list(Number(req.query.page), Number(req.query.limit), req.query.search as string | undefined)); } catch (error) { next(error); }
 };

@@ -9,10 +9,7 @@ export const downloadService = {
     let creditUsed = 0;
     if (document.isPremium) {
       const subscription = await downloadRepository.findActiveSubscription(userId);
-      const withinLimit = subscription
-        ? (await downloadRepository.countSubscriptionDownloads(userId, subscription.startDate, subscription.endDate)) < subscription.plan.downloadLimit
-        : false;
-      if (!withinLimit) {
+      if (!subscription) {
         const user = await downloadRepository.findUser(userId);
         if (!user || user.creditBalance < 1) throw new AppError("Insufficient credit balance", 400);
         creditUsed = 1;

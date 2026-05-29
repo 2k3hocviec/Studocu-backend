@@ -9,3 +9,11 @@ export const updateProfileSchema = z.object({
 export const listUsersSchema = paginationSchema.extend({ search: z.string().optional() });
 export const userIdSchema = z.object({ id: z.coerce.number().int().positive() });
 export const updateStatusSchema = z.object({ status: z.nativeEnum(UserStatus) });
+export const changePasswordSchema = z.object({
+  currentPassword: z.string().min(1),
+  newPassword: z.string().min(8).max(100),
+  confirmPassword: z.string().min(8).max(100),
+}).refine((data) => data.newPassword === data.confirmPassword, {
+  message: "Mật khẩu xác nhận không khớp.",
+  path: ["confirmPassword"],
+});

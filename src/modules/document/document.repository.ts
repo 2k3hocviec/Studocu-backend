@@ -107,7 +107,7 @@ export const documentRepository = {
       });
       // Chỉ cộng credit nếu chưa từng cộng (creditEarned = false)
       if (reward && !document.creditEarned) {
-        const CREDIT_AMOUNT = 5;
+        const CREDIT_AMOUNT = 2;
         await tx.user.update({ where: { id: uploaderId }, data: { creditBalance: { increment: CREDIT_AMOUNT } } });
         await tx.creditTransaction.create({ data: { userId: uploaderId, documentId: id, type: CreditTransactionType.EARN_UPLOAD, amount: CREDIT_AMOUNT } });
         // Mark đã cộng credit

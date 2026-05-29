@@ -1,4 +1,5 @@
 import { ErrorRequestHandler } from "express";
+import multer from "multer";
 import { ZodError } from "zod";
 import { sendError } from "../utils/response";
 
@@ -19,6 +20,10 @@ export const errorHandler: ErrorRequestHandler = (error, _req, res, _next) => {
   }
   if (error instanceof ZodError) {
     sendError(res, error.issues.map((issue) => issue.message).join(", "), 400);
+    return;
+  }
+  if (error instanceof multer.MulterError) {
+    sendError(res, error.code === "LIMIT_FILE_SIZE" ? "File avatar tối đa 2MB." : error.message, 400);
     return;
   }
   console.error(error);

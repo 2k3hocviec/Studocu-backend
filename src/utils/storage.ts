@@ -74,3 +74,33 @@ export async function uploadDocumentPreviewImage(buffer: Buffer, publicId: strin
     upload.end(buffer);
   });
 }
+
+export async function uploadAvatarImage(file: Express.Multer.File, userId: number): Promise<string> {
+  if (!env.CLOUDINARY_URL) {
+    throw new AppError("CLOUDINARY_URL is required for avatar uploads", 500);
+  }
+  if (file.mimetype !== "image/png") {
+    throw new AppError("Avatar must be a PNG image", 400);
+  }
+
+  return new Promise((resolve, reject) => {
+    const upload = cloudinary.uploader.upload_stream(
+      {
+        resource_type: "image",
+        public_id: `user-avatars/${userId}-${Date.now()}`,
+        format: "png",
+        overwrite: true,
+        transformation: [{ width: 512, height: 512, crop: "fill", gravity: "face" }],
+      },
+      (error, result) => {
+        if (error || !result) {
+          reject(new AppError("Avatar upload failed", 500));
+          return;
+        }
+        resolve(result.secure_url);
+      },
+    );
+
+    upload.end(file.buffer);
+  });
+}

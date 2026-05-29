@@ -6,6 +6,51 @@ export const reportRepository = {
   create: (reporterId: number, data: { documentId: number; reason: string; description?: string | null }) =>
     prisma.report.create({ data: { reporterId, ...data }, include: { document: true } }),
   findById: (id: number) => prisma.report.findUnique({ where: { id } }),
+  findDocumentForReport: (id: number) =>
+    prisma.document.findFirst({
+      where: { id, deletedAt: null },
+      select: { id: true, uploaderId: true },
+    }),
+  findDetail: (id: number) =>
+    prisma.report.findUnique({
+      where: { id },
+      include: {
+        reporter: { select: { id: true, fullName: true, email: true } },
+        handler: { select: { id: true, fullName: true } },
+        document: {
+          select: {
+            id: true,
+            title: true,
+            description: true,
+            status: true,
+            documentType: true,
+            isPremium: true,
+            viewCount: true,
+            downloadCount: true,
+            rejectReason: true,
+            createdAt: true,
+            uploader: { select: { id: true, fullName: true } },
+            school: { select: { id: true, name: true } },
+            subject: { select: { id: true, name: true } },
+            documentFile: {
+              select: {
+                fileType: true,
+                totalPages: true,
+              },
+            },
+            previews: {
+              orderBy: { pageNumber: "asc" },
+              select: {
+                id: true,
+                pageNumber: true,
+                imageUrl: true,
+                isBlurred: true,
+              },
+            },
+          },
+        },
+      },
+    }),
   list: (page: number, limit: number) =>
     Promise.all([
       prisma.report.findMany({ ...pagination(page, limit), orderBy: { createdAt: "desc" }, include: { document: true, reporter: { select: { id: true, fullName: true, email: true } }, handler: { select: { id: true, fullName: true } } } }),

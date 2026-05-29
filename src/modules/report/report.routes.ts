@@ -9,6 +9,7 @@ import { createReportSchema, listReportsSchema, reportIdSchema } from "./report.
 const router = Router();
 router.post("/", authenticate, validate(createReportSchema), controller.create);
 router.get("/", authenticate, allowRoles(UserRole.ADMIN, UserRole.MODERATOR), validate(listReportsSchema, "query"), controller.list);
+router.get("/:id", authenticate, allowRoles(UserRole.ADMIN, UserRole.MODERATOR), validate(reportIdSchema, "params"), controller.detail);
 router.patch("/:id/resolve", authenticate, allowRoles(UserRole.ADMIN, UserRole.MODERATOR), validate(reportIdSchema, "params"), controller.resolve);
 router.patch("/:id/reject", authenticate, allowRoles(UserRole.ADMIN, UserRole.MODERATOR), validate(reportIdSchema, "params"), controller.reject);
 export default router;

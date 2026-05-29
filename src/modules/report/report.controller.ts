@@ -9,6 +9,9 @@ export const create: RequestHandler = async (req, res, next) => {
 export const list: RequestHandler = async (req, res, next) => {
   try { sendSuccess(res, await reportService.list(Number(req.query.page), Number(req.query.limit))); } catch (error) { next(error); }
 };
+export const detail: RequestHandler = async (req, res, next) => {
+  try { sendSuccess(res, await reportService.detail(Number(req.params.id))); } catch (error) { next(error); }
+};
 export const resolve: RequestHandler = async (req, res, next) => {
   try { sendSuccess(res, await reportService.updateStatus(Number(req.params.id), req.user!.userId, ReportStatus.RESOLVED)); } catch (error) { next(error); }
 };
