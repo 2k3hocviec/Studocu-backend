@@ -11,17 +11,12 @@ export const listDocumentsSchema = paginationSchema.extend({
 });
 export const documentIdSchema = z.object({ id: z.coerce.number().int().positive() });
 export const documentIdParamSchema = z.object({ documentId: z.coerce.number().int().positive() });
-const booleanFromForm = z.preprocess(
-  (value) => value === "true" ? true : value === "false" ? false : value,
-  z.boolean(),
-);
 export const createDocumentSchema = z.object({
   schoolId: z.coerce.number().int().positive(),
   subjectId: z.coerce.number().int().positive(),
   title: z.string().min(3).max(250),
   description: z.string().max(3000).nullable().optional(),
   documentType: z.nativeEnum(DocumentType),
-  isPremium: booleanFromForm.default(false),
   fileUrl: z.string().url().optional(),
   previewUrl: z.string().url().optional(),
   originalFilename: z.string().min(1).optional(),
@@ -39,7 +34,6 @@ export const updateDocumentSchema = z.object({
   title: z.string().min(3).max(250).optional(),
   description: z.string().max(3000).nullable().optional(),
   documentType: z.nativeEnum(DocumentType).optional(),
-  isPremium: z.boolean().optional(),
 });
 export const rejectDocumentSchema = z.object({ reason: z.string().min(3).max(500) });
 export const reactionSchema = z.object({ type: z.nativeEnum(ReactionType).nullable() });

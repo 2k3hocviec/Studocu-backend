@@ -19,7 +19,6 @@ router.patch("/:id/approve", authenticate, allowRoles(UserRole.ADMIN, UserRole.M
 router.patch("/:id/reject", authenticate, allowRoles(UserRole.ADMIN, UserRole.MODERATOR), validate(documentIdSchema, "params"), validate(rejectDocumentSchema), controller.reject);
 router.patch("/:id/hide", authenticate, allowRoles(UserRole.ADMIN, UserRole.MODERATOR), validate(documentIdSchema, "params"), controller.hide);
 router.patch("/:id/unhide", authenticate, allowRoles(UserRole.ADMIN, UserRole.MODERATOR), validate(documentIdSchema, "params"), controller.unhide);
-router.post("/:id/unlock", authenticate, validate(documentIdSchema, "params"), controller.unlockFullAccess);
 router.post("/:id/download", authenticate, validate(documentIdSchema, "params"), controller.recordDownload);
 router.post("/:id/reaction", authenticate, validate(documentIdSchema, "params"), validate(reactionSchema), controller.react);
 export default router;

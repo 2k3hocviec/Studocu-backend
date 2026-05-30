@@ -18,13 +18,9 @@ function previewPageLimit(totalPages?: number | null, previewCount = 0) {
   return previewPageCount(pageCount);
 }
 
-async function canViewFull(document: Awaited<ReturnType<typeof documentRepository.findDetail>>, actor: Actor) {
+function canViewFull(document: Awaited<ReturnType<typeof documentRepository.findDetail>>, actor: Actor) {
   if (!document || !actor?.userId) return false;
-  const owner = actor.userId === document.uploaderId;
-  const premiumAccess = Boolean(await documentRepository.findActiveSubscription(actor.userId));
-  const hasUnlocked = Boolean(await documentRepository.hasFullAccess(document.id, actor.userId));
-
-  return owner || isModerator(actor) || premiumAccess || hasUnlocked;
+  return actor.userId === document.uploaderId || isModerator(actor) || Boolean(actor.userId);
 }
 
 function fileContentType(fileType: string) {
@@ -81,11 +77,11 @@ export const documentService = {
       throw new AppError("Document not found", 404);
     }
     await documentRepository.incrementView(id);
+    if (actor?.userId) {
+      await documentRepository.recordUserView(id, actor.userId);
+    }
 
-    const premiumAccess = actor ? Boolean(await documentRepository.findActiveSubscription(actor.userId)) : false;
-    const hasUnlocked = actor ? Boolean(await documentRepository.hasFullAccess(id, actor.userId)) : false;
-    const fullAccess = owner || isModerator(actor) || premiumAccess || hasUnlocked;
-
+    const fullAccess = canViewFull(document, actor);
     const previewLimit = previewPageLimit(document.documentFile?.totalPages, document.previews.length);
     const reactionCounts = await documentRepository.reactionCounts(id);
     const myReaction = actor?.userId ? await documentRepository.findReaction(id, actor.userId) : null;
@@ -102,12 +98,7 @@ export const documentService = {
       ...document,
       accessInfo: {
         canViewFull: fullAccess,
-        isPremium: document.isPremium,
         isOwner: owner,
-        hasPremium: premiumAccess,
-        hasUnlocked,
-        needsUnlock: !fullAccess && Boolean(actor?.userId),
-        unlockCost: 1,
       },
       reactionInfo: {
         likeCount,
@@ -131,8 +122,8 @@ export const documentService = {
       throw new AppError("Document not found", 404);
     }
     if (!document.documentFile?.fileUrl) throw new AppError("Document file not found", 404);
-    if (!(await canViewFull(document, actor))) {
-      throw new AppError("Unlock this document before viewing the full file", 403);
+    if (!canViewFull(document, actor)) {
+      throw new AppError("Must be logged in to view the full file", 401);
     }
 
     return {
@@ -147,7 +138,7 @@ export const documentService = {
     const generatedPreview = uploaded ? await generateDocumentPreview(uploaded, input.fileType) : null;
     const totalPages = generatedPreview?.totalPages ?? input.totalPages;
     if (totalPages && totalPages < 3) {
-      throw new AppError("Tài liệu phải có tối thiểu 3 trang.", 400);
+      throw new AppError("Tai lieu phai co toi thieu 3 trang.", 400);
     }
     const fileUrl = uploaded ? await uploadDocumentFile(uploaded) : input.fileUrl;
     if (!fileUrl) throw new AppError("A document file or fileUrl is required", 400);
@@ -166,10 +157,10 @@ export const documentService = {
           isBlurred: false,
         })))
       : undefined;
-    
-    const document = await documentRepository.create({
+
+    return documentRepository.create({
       uploaderId, schoolId: input.schoolId, subjectId: input.subjectId, title: input.title,
-      description: input.description, documentType: input.documentType, isPremium: input.isPremium,
+      description: input.description, documentType: input.documentType,
       file: {
         fileUrl, previewUrl: input.previewUrl,
         originalFilename: input.originalFilename ?? uploaded?.originalname ?? "document",
@@ -178,8 +169,6 @@ export const documentService = {
       },
       previews: generatedPreviews ?? input.previews,
     });
-
-    return document;
   },
 
   async react(documentId: number, actor: Actor, type: ReactionType | null) {
@@ -190,8 +179,8 @@ export const documentService = {
     if (document.status !== DocumentStatus.APPROVED && actor.userId !== document.uploaderId && !isModerator(actor)) {
       throw new AppError("Document not found", 404);
     }
-    if (!(await canViewFull(document, actor))) {
-      throw new AppError("Unlock this document before reacting", 403);
+    if (!canViewFull(document, actor)) {
+      throw new AppError("Must be logged in to react", 401);
     }
 
     if (type) {
@@ -245,53 +234,18 @@ export const documentService = {
     return documentRepository.unhide(id, moderatorId);
   },
 
-  // Unlock full access - trừ credit nếu cần
-  async unlockFullAccess(documentId: number, actor: Actor) {
-    if (!actor?.userId) throw new AppError("Must be logged in", 401);
-
-    const document = await documentRepository.findDetail(documentId);
-    if (!document) throw new AppError("Document not found", 404);
-    if (document.status !== DocumentStatus.APPROVED) throw new AppError("Document not available", 403);
-
-    const isOwner = actor.userId === document.uploaderId;
-    const isPremium = Boolean(await documentRepository.findActiveSubscription(actor.userId));
-
-    // Owner hoặc premium không cần trừ credit
-    if (isOwner || isPremium) {
-      return { accessGranted: true, creditCost: 0, reason: "owner_or_premium" };
-    }
-
-    // Check đã unlock chưa
-    const hasAccess = await documentRepository.hasFullAccess(documentId, actor.userId);
-    if (hasAccess) {
-      return { accessGranted: true, creditCost: 0, reason: "already_unlocked" };
-    }
-
-    // Unlock - trừ 1 credit
-    try {
-      await documentRepository.unlockFullAccess(documentId, actor.userId);
-      return { accessGranted: true, creditCost: 1, reason: "unlocked" };
-    } catch (error) {
-      if ((error as Error).message === "Insufficient credits") {
-        throw new AppError("Insufficient credits to unlock this document", 402);
-      }
-      throw error;
-    }
-  },
-
-  // Record download
   async recordDownload(documentId: number, actor: Actor) {
     if (!actor?.userId) throw new AppError("Must be logged in", 401);
 
     const document = await documentRepository.findDetail(documentId);
     if (!document) throw new AppError("Document not found", 404);
-    if (document.status !== DocumentStatus.APPROVED) throw new AppError("Document not available", 403);
-
-    if (!(await canViewFull(document, actor))) {
-      throw new AppError("Unlock this document before downloading", 403);
+    if (document.status !== DocumentStatus.APPROVED && actor.userId !== document.uploaderId && !isModerator(actor)) {
+      throw new AppError("Document not available", 403);
+    }
+    if (!canViewFull(document, actor)) {
+      throw new AppError("Must be logged in to download", 401);
     }
 
-    // Record download
     await documentRepository.recordDownload(documentId, actor.userId);
     await documentRepository.incrementDownload(documentId);
 

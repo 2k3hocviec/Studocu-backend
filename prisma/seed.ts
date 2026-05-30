@@ -114,7 +114,6 @@ type DocumentSeed = {
   schoolId: number;
   subjectId: number;
   documentType: DocumentType;
-  isPremium: boolean;
   pages: number;
   downloads: number;
 };
@@ -133,7 +132,6 @@ async function seedDocuments(
       schoolId: bachKhoa.id,
       subjectId: subjects["cau-truc-du-lieu"].id,
       documentType: DocumentType.LECTURE,
-      isPremium: false,
       pages: 84,
       downloads: 1250,
     },
@@ -143,7 +141,6 @@ async function seedDocuments(
       schoolId: kinhTe.id,
       subjectId: subjects["xac-suat-thong-ke"].id,
       documentType: DocumentType.EXAM,
-      isPremium: false,
       pages: 18,
       downloads: 930,
     },
@@ -153,7 +150,6 @@ async function seedDocuments(
       schoolId: fpt.id,
       subjectId: subjects["lap-trinh-web"].id,
       documentType: DocumentType.NOTE,
-      isPremium: true,
       pages: 42,
       downloads: 720,
     },
@@ -163,7 +159,6 @@ async function seedDocuments(
       schoolId: bachKhoa.id,
       subjectId: subjects["co-so-du-lieu"].id,
       documentType: DocumentType.ASSIGNMENT,
-      isPremium: false,
       pages: 35,
       downloads: 488,
     },
@@ -173,7 +168,6 @@ async function seedDocuments(
       schoolId: kinhTe.id,
       subjectId: subjects.marketing.id,
       documentType: DocumentType.LECTURE,
-      isPremium: true,
       pages: 56,
       downloads: 614,
     },
@@ -183,7 +177,6 @@ async function seedDocuments(
       schoolId: ngoaiThuong.id,
       subjectId: subjects["tieng-anh"].id,
       documentType: DocumentType.OTHER,
-      isPremium: false,
       pages: 67,
       downloads: 301,
     },
@@ -200,7 +193,6 @@ async function seedDocuments(
       description: document.description,
       documentType: document.documentType,
       status: DocumentStatus.APPROVED,
-      isPremium: document.isPremium,
       downloadCount: document.downloads,
       viewCount: document.downloads * 3,
       approvedBy: adminId,

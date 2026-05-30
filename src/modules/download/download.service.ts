@@ -6,17 +6,8 @@ export const downloadService = {
   async download(userId: number, documentId: number) {
     const document = await downloadRepository.findDocument(documentId);
     if (!document || !document.documentFile) throw new AppError("Document is unavailable for download", 404);
-    let creditUsed = 0;
-    if (document.isPremium) {
-      const subscription = await downloadRepository.findActiveSubscription(userId);
-      if (!subscription) {
-        const user = await downloadRepository.findUser(userId);
-        if (!user || user.creditBalance < 1) throw new AppError("Insufficient credit balance", 400);
-        creditUsed = 1;
-      }
-    }
-    await downloadRepository.record(userId, documentId, creditUsed);
-    return { fileUrl: `/documents/${documentId}/file?download=1`, creditUsed };
+    await downloadRepository.record(userId, documentId);
+    return { fileUrl: `/documents/${documentId}/file?download=1` };
   },
   async history(userId: number, page: number, limit: number) {
     const [items, total] = await downloadRepository.history(userId, page, limit);

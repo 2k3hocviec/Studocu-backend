@@ -47,9 +47,6 @@ export const hide: RequestHandler = async (req, res, next) => {
 export const unhide: RequestHandler = async (req, res, next) => {
   try { sendSuccess(res, await documentService.unhide(Number(req.params.id), req.user!.userId)); } catch (error) { next(error); }
 };
-export const unlockFullAccess: RequestHandler = async (req, res, next) => {
-  try { sendSuccess(res, await documentService.unlockFullAccess(Number(req.params.id), req.user)); } catch (error) { next(error); }
-};
 export const recordDownload: RequestHandler = async (req, res, next) => {
   try { sendSuccess(res, await documentService.recordDownload(Number(req.params.id), req.user)); } catch (error) { next(error); }
 };

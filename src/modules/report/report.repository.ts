@@ -24,7 +24,6 @@ export const reportRepository = {
             description: true,
             status: true,
             documentType: true,
-            isPremium: true,
             viewCount: true,
             downloadCount: true,
             rejectReason: true,

@@ -9,7 +9,6 @@ export interface NewDocumentData {
   title: string;
   description?: string | null;
   documentType: DocumentType;
-  isPremium: boolean;
   file: {
     fileUrl: string;
     previewUrl?: string;
@@ -83,14 +82,18 @@ export const documentRepository = {
     }),
   removeReaction: (documentId: number, userId: number) =>
     prisma.documentReaction.deleteMany({ where: { userId, documentId } }),
-  findActiveSubscription: (userId: number) =>
-    prisma.subscription.findFirst({ where: { userId, status: "ACTIVE", endDate: { gt: new Date() } } }),
   incrementView: (id: number) => prisma.document.update({ where: { id }, data: { viewCount: { increment: 1 } } }),
+  recordUserView: (documentId: number, userId: number) =>
+    prisma.documentView.upsert({
+      where: { userId_documentId: { userId, documentId } },
+      update: { viewedAt: new Date() },
+      create: { userId, documentId },
+    }),
   create: (data: NewDocumentData) =>
     prisma.document.create({
       data: {
         uploaderId: data.uploaderId, schoolId: data.schoolId, subjectId: data.subjectId,
-        title: data.title, description: data.description, documentType: data.documentType, isPremium: data.isPremium,
+        title: data.title, description: data.description, documentType: data.documentType,
         documentFile: { create: data.file },
         previews: data.previews ? { create: data.previews } : undefined,
       },
@@ -105,12 +108,10 @@ export const documentRepository = {
         data: { status: DocumentStatus.APPROVED, approvedBy: moderatorId, approvedAt: new Date(), rejectReason: null },
         include: detailInclude,
       });
-      // Chỉ cộng credit nếu chưa từng cộng (creditEarned = false)
       if (reward && !document.creditEarned) {
-        const CREDIT_AMOUNT = 2;
-        await tx.user.update({ where: { id: uploaderId }, data: { creditBalance: { increment: CREDIT_AMOUNT } } });
-        await tx.creditTransaction.create({ data: { userId: uploaderId, documentId: id, type: CreditTransactionType.EARN_UPLOAD, amount: CREDIT_AMOUNT } });
-        // Mark đã cộng credit
+        const creditAmount = 2;
+        await tx.user.update({ where: { id: uploaderId }, data: { creditBalance: { increment: creditAmount } } });
+        await tx.creditTransaction.create({ data: { userId: uploaderId, documentId: id, type: CreditTransactionType.EARN_UPLOAD, amount: creditAmount } });
         await tx.document.update({
           where: { id },
           data: { creditEarned: true },
@@ -136,50 +137,6 @@ export const documentRepository = {
       data: { status: DocumentStatus.APPROVED, approvedBy: moderatorId, approvedAt: new Date() },
       include: detailInclude,
     }),
-  // Kiểm tra user đã unlock full access chưa
-  hasFullAccess: (documentId: number, userId: number) =>
-    prisma.download.findFirst({
-      where: { documentId, userId },
-    }),
-  // Unlock full access - trừ credit, tạo Download record
-  unlockFullAccess: (documentId: number, userId: number) =>
-    prisma.$transaction(async (tx) => {
-      const CREDIT_COST = 1;
-
-      // 1. Check user có đủ credit không
-      const user = await tx.user.findUnique({ where: { id: userId } });
-      if (!user || user.creditBalance < CREDIT_COST) {
-        throw new Error("Insufficient credits");
-      }
-
-      // 2. Trừ credit
-      await tx.user.update({
-        where: { id: userId },
-        data: { creditBalance: { decrement: CREDIT_COST } },
-      });
-
-      // 3. Record credit transaction
-      await tx.creditTransaction.create({
-        data: {
-          userId,
-          documentId,
-          type: CreditTransactionType.USE_DOWNLOAD,
-          amount: CREDIT_COST,
-        },
-      });
-
-      // 4. Record download (unlock full access)
-      return tx.download.upsert({
-        where: { userId_documentId: { userId, documentId } },
-        update: { downloadedAt: new Date() },
-        create: {
-          userId,
-          documentId,
-          creditUsed: CREDIT_COST,
-        },
-      });
-    }),
-  // Record download
   recordDownload: (documentId: number, userId: number) =>
     prisma.download.upsert({
       where: { userId_documentId: { userId, documentId } },
@@ -187,9 +144,7 @@ export const documentRepository = {
       create: {
         userId,
         documentId,
-        creditUsed: 0,
       },
     }),
-  // Update download count
   incrementDownload: (id: number) => prisma.document.update({ where: { id }, data: { downloadCount: { increment: 1 } } }),
 };

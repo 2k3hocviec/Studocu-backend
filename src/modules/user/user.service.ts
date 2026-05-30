@@ -35,4 +35,25 @@ export const userService = {
     try { return await userRepository.updateStatus(userId, status); }
     catch { throw new AppError("User not found", 404); }
   },
+  async myDocuments(userId: number) {
+    const items = await userRepository.myDocuments(userId);
+    return items.map(profileDocument);
+  },
+  async recentDocuments(userId: number, limit: number) {
+    const items = await userRepository.recentDocuments(userId, limit);
+    return items.map((item) => ({
+      ...profileDocument(item.document),
+      viewedAt: item.viewedAt,
+    }));
+  },
 };
+
+function profileDocument(document: Awaited<ReturnType<typeof userRepository.myDocuments>>[number]) {
+  return {
+    ...document,
+    coverImageUrl: document.previews[0]?.imageUrl ?? null,
+    totalPages: document.documentFile?.totalPages ?? null,
+    previews: undefined,
+    documentFile: undefined,
+  };
+}

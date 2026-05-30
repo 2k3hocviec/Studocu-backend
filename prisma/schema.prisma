@@ -77,7 +77,6 @@ enum PaymentStatus {
 
 enum CreditTransactionType {
   EARN_UPLOAD
-  USE_DOWNLOAD
   ADMIN_ADJUST
 }
 
@@ -101,6 +100,7 @@ model User {
   documents          Document[]          @relation("UploaderDocuments")
   approvedDocuments  Document[]          @relation("ApproverDocuments")
   downloads          Download[]
+  documentViews      DocumentView[]
   favorites          Favorite[]
   documentReactions  DocumentReaction[]
   reports            Report[]            @relation("ReporterReports")
@@ -156,7 +156,6 @@ model Document {
   description   String?
   documentType  DocumentType   @map("document_type")
   status        DocumentStatus @default(PENDING)
-  isPremium     Boolean        @default(false) @map("is_premium")
   viewCount     Int            @default(0) @map("view_count")
   downloadCount Int            @default(0) @map("download_count")
   creditEarned  Boolean        @default(false) @map("credit_earned")
@@ -173,6 +172,7 @@ model Document {
   documentFile       DocumentFile?
   previews           DocumentPreview[]
   downloads          Download[]
+  views              DocumentView[]
   favorites          Favorite[]
   reactions          DocumentReaction[]
   reports            Report[]
@@ -211,11 +211,22 @@ model Download {
   userId       Int      @map("user_id")
   documentId   Int      @map("document_id")
   downloadedAt DateTime @default(now()) @map("downloaded_at")
-  creditUsed   Float    @default(0) @map("credit_used")
   user     User     @relation(fields: [userId], references: [id])
   document Document @relation(fields: [documentId], references: [id])
   @@unique([userId, documentId])
   @@map("downloads")
+}
+
+model DocumentView {
+  id         Int      @id @default(autoincrement())
+  userId     Int      @map("user_id")
+  documentId Int      @map("document_id")
+  viewedAt   DateTime @default(now()) @map("viewed_at")
+  user       User     @relation(fields: [userId], references: [id])
+  document   Document @relation(fields: [documentId], references: [id])
+  @@unique([userId, documentId])
+  @@index([userId, viewedAt])
+  @@map("document_views")
 }
 
 model Favorite {
