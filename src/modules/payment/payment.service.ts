@@ -1,6 +1,7 @@
 import { PaymentMethod, PaymentStatus } from "@prisma/client";
 import { env } from "../../config/env";
 import { AppError } from "../../middlewares/errorHandler";
+import { sendPremiumPaymentSuccessEmail } from "../../utils/email";
 import { paginated } from "../../utils/pagination";
 import { paymentRepository } from "./payment.repository";
 import { buildVnpayUrl, verifyVnpay } from "../../utils/vnpay";
@@ -13,6 +14,17 @@ function formatVnpayDate(date: Date) {
 function normalizeIp(ip?: string) {
   if (!ip || ip === "::1") return "127.0.0.1";
   return ip.startsWith("::ffff:") ? ip.slice(7) : ip;
+}
+
+async function notifyPremiumSuccess(result: Awaited<ReturnType<typeof paymentRepository.confirmAndSubscribe>>) {
+  if (!result.newlyPaid || !result.subscription) return;
+
+  await sendPremiumPaymentSuccessEmail({
+    email: result.payment.user.email,
+    fullName: result.payment.user.fullName,
+    planName: result.subscription.plan.name,
+    endDate: result.subscription.endDate,
+  });
 }
 
 export const paymentService = {
@@ -52,7 +64,9 @@ export const paymentService = {
     const payment = await paymentRepository.findOwned(paymentId, userId);
     if (!payment) throw new AppError("Payment not found", 404);
     if (payment.status !== PaymentStatus.PENDING) throw new AppError("Payment has already been processed", 409);
-    return paymentRepository.confirmAndSubscribe(payment.id, userId, payment.planId, payment.plan.durationDays);
+    const result = await paymentRepository.confirmAndSubscribe(payment.id, userId, payment.planId, payment.plan.durationDays);
+    await notifyPremiumSuccess(result);
+    return result;
   },
   async history(userId: number, page: number, limit: number) {
     const [items, total] = await paymentRepository.history(userId, page, limit);
@@ -82,7 +96,8 @@ export const paymentService = {
       return { success: false, paymentId: payment.id };
     }
 
-    await paymentRepository.confirmAndSubscribe(payment.id, payment.userId, payment.planId, payment.plan.durationDays);
+    const result = await paymentRepository.confirmAndSubscribe(payment.id, payment.userId, payment.planId, payment.plan.durationDays);
+    await notifyPremiumSuccess(result);
     return { success: true, paymentId: payment.id };
   },
 
@@ -110,7 +125,8 @@ export const paymentService = {
       return { success: false, alreadyProcessed: false };
     }
 
-    await paymentRepository.confirmAndSubscribe(payment.id, payment.userId, payment.planId, payment.plan.durationDays);
+    const result = await paymentRepository.confirmAndSubscribe(payment.id, payment.userId, payment.planId, payment.plan.durationDays);
+    await notifyPremiumSuccess(result);
     return { success: true, alreadyProcessed: false };
   },
 };

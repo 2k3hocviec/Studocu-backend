@@ -1,6 +1,7 @@
 import { DocumentStatus, ReactionType, UserRole } from "@prisma/client";
 import { randomUUID } from "node:crypto";
 import { AppError } from "../../middlewares/errorHandler";
+import { sendDocumentApprovedEmail } from "../../utils/email";
 import { paginated } from "../../utils/pagination";
 import { generateDocumentPreview, previewPageCount } from "../../utils/preview";
 import { uploadDocumentFile, uploadDocumentPreviewImage } from "../../utils/storage";
@@ -218,7 +219,16 @@ export const documentService = {
   async approve(id: number, moderatorId: number) {
     const document = await documentRepository.findDetail(id);
     if (!document) throw new AppError("Document not found", 404);
-    return documentRepository.approveWithReward(id, moderatorId, document.uploaderId, document.status !== DocumentStatus.APPROVED);
+    const shouldNotify = document.status !== DocumentStatus.APPROVED;
+    const approvedDocument = await documentRepository.approveWithReward(id, moderatorId, document.uploaderId, shouldNotify);
+    if (shouldNotify) {
+      await sendDocumentApprovedEmail({
+        email: approvedDocument.uploader.email,
+        fullName: approvedDocument.uploader.fullName,
+        documentTitle: approvedDocument.title,
+      });
+    }
+    return approvedDocument;
   },
 
   async reject(id: number, moderatorId: number, reason: string) {

@@ -2,12 +2,17 @@ import { PaymentMethod, PaymentStatus, SubscriptionStatus } from "@prisma/client
 import { prisma } from "../../database/prisma";
 import { pagination } from "../../utils/pagination";
 
+const paymentInclude = {
+  plan: true,
+  user: { select: { id: true, fullName: true, email: true } },
+};
+
 export const paymentRepository = {
   findPlan: (id: number) => prisma.subscriptionPlan.findFirst({ where: { id, isActive: true } }),
   create: (userId: number, planId: number, amount: number, method: PaymentMethod) =>
     prisma.payment.create({ data: { userId, planId, amount, method }, include: { plan: true } }),
-  findOwned: (id: number, userId: number) => prisma.payment.findFirst({ where: { id, userId }, include: { plan: true } }),
-  findById: (id: number) => prisma.payment.findUnique({ where: { id }, include: { plan: true } }),
+  findOwned: (id: number, userId: number) => prisma.payment.findFirst({ where: { id, userId }, include: paymentInclude }),
+  findById: (id: number) => prisma.payment.findUnique({ where: { id }, include: paymentInclude }),
   fail: (id: number) => prisma.payment.update({ where: { id }, data: { status: PaymentStatus.FAILED } }),
   confirmAndSubscribe: (id: number, userId: number, planId: number, durationDays: number) => {
     const paidAt = new Date();
@@ -17,13 +22,13 @@ export const paymentRepository = {
         data: { status: PaymentStatus.PAID, paidAt },
       });
       if (paidPayment.count === 0) {
-        const payment = await tx.payment.findUniqueOrThrow({ where: { id } });
+        const payment = await tx.payment.findUniqueOrThrow({ where: { id }, include: paymentInclude });
         const subscription = await tx.subscription.findFirst({
           where: { userId, status: SubscriptionStatus.ACTIVE, endDate: { gt: paidAt } },
           orderBy: { endDate: "desc" },
           include: { plan: true },
         });
-        return { payment, subscription };
+        return { payment, subscription, newlyPaid: false };
       }
 
       const activeSubscription = await tx.subscription.findFirst({
@@ -33,7 +38,7 @@ export const paymentRepository = {
       const startDate = activeSubscription?.endDate ?? paidAt;
       const endDate = new Date(startDate.getTime() + durationDays * 24 * 60 * 60 * 1000);
 
-      const payment = await tx.payment.findUniqueOrThrow({ where: { id } });
+      const payment = await tx.payment.findUniqueOrThrow({ where: { id }, include: paymentInclude });
       const subscription = activeSubscription
         ? await tx.subscription.update({
             where: { id: activeSubscription.id },
@@ -44,7 +49,7 @@ export const paymentRepository = {
             data: { userId, planId, startDate, endDate, status: SubscriptionStatus.ACTIVE },
             include: { plan: true },
           });
-      return { payment, subscription };
+      return { payment, subscription, newlyPaid: true };
     });
   },
   history: (userId: number, page: number, limit: number) =>

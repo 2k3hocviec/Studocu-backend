@@ -22,7 +22,7 @@ export interface NewDocumentData {
 }
 
 const detailInclude = {
-  uploader: { select: { id: true, fullName: true, avatarUrl: true } },
+  uploader: { select: { id: true, fullName: true, email: true, avatarUrl: true } },
   school: true,
   subject: true,
   documentFile: true,
