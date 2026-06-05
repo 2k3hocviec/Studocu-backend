@@ -10,16 +10,31 @@ import {
 import bcrypt from "bcrypt";
 
 const prisma = new PrismaClient();
-const demoPassword = "Password@123";
+const demoPassword = "12345678";
 
 async function seedUsers() {
   const passwordHash = await bcrypt.hash(demoPassword, 10);
 
+  await prisma.user.updateMany({
+    where: {
+      role: UserRole.ADMIN,
+      email: { not: "admin@hoclieu.local" },
+      deletedAt: null,
+    },
+    data: { role: UserRole.USER },
+  });
+
   const admin = await prisma.user.upsert({
     where: { email: "admin@hoclieu.local" },
-    update: { fullName: "Quan tri HocLieu", passwordHash, status: UserStatus.ACTIVE, role: UserRole.ADMIN },
+    update: {
+      fullName: "Quản trị Học Liệu",
+      passwordHash,
+      status: UserStatus.ACTIVE,
+      role: UserRole.ADMIN,
+      creditBalance: 100,
+    },
     create: {
-      fullName: "Quan tri HocLieu",
+      fullName: "Quản trị Học Liệu",
       email: "admin@hoclieu.local",
       passwordHash,
       status: UserStatus.ACTIVE,
@@ -28,51 +43,70 @@ async function seedUsers() {
     },
   });
 
-  const user = await prisma.user.upsert({
-    where: { email: "student@hoclieu.local" },
-    update: { fullName: "Nguyen Van An", passwordHash, status: UserStatus.ACTIVE, role: UserRole.USER },
-    create: {
-      fullName: "Nguyen Van An",
-      email: "student@hoclieu.local",
-      passwordHash,
-      status: UserStatus.ACTIVE,
-      role: UserRole.USER,
-      creditBalance: 20,
-    },
+  const demoUsers = [
+    { fullName: "Nguyễn Văn An", email: "student@hoclieu.local", creditBalance: 20 },
+    { fullName: "Trần Thị Bình", email: "binh.tran@hoclieu.local", creditBalance: 15 },
+    { fullName: "Lê Minh Châu", email: "chau.le@hoclieu.local", creditBalance: 25 },
+    { fullName: "Phạm Quốc Dũng", email: "dung.pham@hoclieu.local", creditBalance: 10 },
+    { fullName: "Hoàng Gia Hân", email: "han.hoang@hoclieu.local", creditBalance: 30 },
+  ];
+
+  const users = await Promise.all(
+    demoUsers.map((demoUser) =>
+      prisma.user.upsert({
+        where: { email: demoUser.email },
+        update: {
+          fullName: demoUser.fullName,
+          passwordHash,
+          status: UserStatus.ACTIVE,
+          role: UserRole.USER,
+        },
+        create: {
+          ...demoUser,
+          passwordHash,
+          status: UserStatus.ACTIVE,
+          role: UserRole.USER,
+        },
+      }),
+    ),
+  );
+
+  await prisma.user.deleteMany({
+    where: { email: { in: ["khoa.do@hoclieu.local"] } },
   });
 
-  return { admin, user };
+  return { admin, users };
 }
 
 async function seedCatalog() {
   const bachKhoa = await prisma.school.upsert({
     where: { slug: "dai-hoc-bach-khoa" },
-    update: { name: "Dai hoc Bach Khoa" },
-    create: { name: "Dai hoc Bach Khoa", slug: "dai-hoc-bach-khoa" },
+    update: { name: "Đại học Bách Khoa" },
+    create: { name: "Đại học Bách Khoa", slug: "dai-hoc-bach-khoa" },
   });
   const kinhTe = await prisma.school.upsert({
     where: { slug: "dai-hoc-kinh-te" },
-    update: { name: "Dai hoc Kinh te" },
-    create: { name: "Dai hoc Kinh te", slug: "dai-hoc-kinh-te" },
+    update: { name: "Đại học Kinh tế" },
+    create: { name: "Đại học Kinh tế", slug: "dai-hoc-kinh-te" },
   });
   const fpt = await prisma.school.upsert({
     where: { slug: "dai-hoc-fpt" },
-    update: { name: "Dai hoc FPT" },
-    create: { name: "Dai hoc FPT", slug: "dai-hoc-fpt" },
+    update: { name: "Đại học FPT" },
+    create: { name: "Đại học FPT", slug: "dai-hoc-fpt" },
   });
   const ngoaiThuong = await prisma.school.upsert({
     where: { slug: "dai-hoc-ngoai-thuong" },
-    update: { name: "Dai hoc Ngoai thuong" },
-    create: { name: "Dai hoc Ngoai thuong", slug: "dai-hoc-ngoai-thuong" },
+    update: { name: "Đại học Ngoại thương" },
+    create: { name: "Đại học Ngoại thương", slug: "dai-hoc-ngoai-thuong" },
   });
 
   const subjectEntries = [
-    { schoolId: bachKhoa.id, name: "Cau truc du lieu", slug: "cau-truc-du-lieu" },
-    { schoolId: bachKhoa.id, name: "Co so du lieu", slug: "co-so-du-lieu" },
-    { schoolId: kinhTe.id, name: "Xac suat thong ke", slug: "xac-suat-thong-ke" },
+    { schoolId: bachKhoa.id, name: "Cấu trúc dữ liệu", slug: "cau-truc-du-lieu" },
+    { schoolId: bachKhoa.id, name: "Cơ sở dữ liệu", slug: "co-so-du-lieu" },
+    { schoolId: kinhTe.id, name: "Xác suất thống kê", slug: "xac-suat-thong-ke" },
     { schoolId: kinhTe.id, name: "Marketing", slug: "marketing" },
-    { schoolId: fpt.id, name: "Lap trinh Web", slug: "lap-trinh-web" },
-    { schoolId: ngoaiThuong.id, name: "Tieng Anh", slug: "tieng-anh" },
+    { schoolId: fpt.id, name: "Lập trình Web", slug: "lap-trinh-web" },
+    { schoolId: ngoaiThuong.id, name: "Tiếng Anh", slug: "tieng-anh" },
   ];
 
   const subjects = await Promise.all(
@@ -93,51 +127,57 @@ async function seedCatalog() {
 
 async function seedPlans() {
   const plans = [
-    { name: "Co ban", price: 49000, durationDays: 30, downloadLimit: 20 },
-    { name: "Sinh vien", price: 99000, durationDays: 90, downloadLimit: 100 },
-    { name: "Hoc ky", price: 169000, durationDays: 180, downloadLimit: 300 },
+    { name: "Cơ bản", oldName: "Co ban", price: 49000, durationDays: 30, downloadLimit: 20 },
+    { name: "Sinh viên", oldName: "Sinh vien", price: 99000, durationDays: 90, downloadLimit: 100 },
+    { name: "Học kỳ", oldName: "Hoc ky", price: 169000, durationDays: 180, downloadLimit: 300 },
   ];
 
   for (const plan of plans) {
-    const existing = await prisma.subscriptionPlan.findFirst({ where: { name: plan.name } });
+    const { oldName, ...data } = plan;
+    const existing = await prisma.subscriptionPlan.findFirst({ where: { name: { in: [plan.name, oldName] } } });
     if (existing) {
-      await prisma.subscriptionPlan.update({ where: { id: existing.id }, data: { ...plan, isActive: true } });
+      await prisma.subscriptionPlan.update({ where: { id: existing.id }, data: { ...data, isActive: true } });
     } else {
-      await prisma.subscriptionPlan.create({ data: plan });
+      await prisma.subscriptionPlan.create({ data });
     }
   }
 }
 
 type DocumentSeed = {
   title: string;
+  oldTitle: string;
   description: string;
   schoolId: number;
   subjectId: number;
   documentType: DocumentType;
   pages: number;
   downloads: number;
+  fileUrl?: string; // Optional custom file URL
 };
 
 async function seedDocuments(
   userId: number,
-  adminId: number,
+  approverId: number,
   catalogs: Awaited<ReturnType<typeof seedCatalog>>,
 ) {
   const { bachKhoa, kinhTe, fpt, ngoaiThuong } = catalogs.schools;
   const subjects = catalogs.subjects;
   const documents: DocumentSeed[] = [
     {
-      title: "Giai thuat va cau truc du lieu can ban",
-      description: "Tong hop cay, do thi va cac thuat toan sap xep.",
+      title: "Giải thuật và cấu trúc dữ liệu căn bản",
+      oldTitle: "Giai thuat va cau truc du lieu can ban",
+      description: "Tổng hợp cây, đồ thị và các thuật toán sắp xếp.",
       schoolId: bachKhoa.id,
       subjectId: subjects["cau-truc-du-lieu"].id,
       documentType: DocumentType.LECTURE,
       pages: 84,
       downloads: 1250,
+      fileUrl: "https://res.cloudinary.com/dyvfwtzz0/raw/upload/v1780649422/academic-documents/650034331-WebGoat-SQL-Injection-Introduction-1780649419022.pdf",
     },
     {
-      title: "De thi cuoi ky Xac suat thong ke 2025",
-      description: "Bo de on tap kem dap an tham khao.",
+      title: "Đề thi cuối kỳ Xác suất thống kê 2025",
+      oldTitle: "De thi cuoi ky Xac suat thong ke 2025",
+      description: "Bộ đề ôn tập kèm đáp án tham khảo.",
       schoolId: kinhTe.id,
       subjectId: subjects["xac-suat-thong-ke"].id,
       documentType: DocumentType.EXAM,
@@ -145,8 +185,9 @@ async function seedDocuments(
       downloads: 930,
     },
     {
-      title: "Tom tat Lap trinh Web voi React",
-      description: "Ghi chu component, hooks va quan ly trang thai.",
+      title: "Tóm tắt Lập trình Web với React",
+      oldTitle: "Tom tat Lap trinh Web voi React",
+      description: "Ghi chú component, hooks và quản lý trạng thái.",
       schoolId: fpt.id,
       subjectId: subjects["lap-trinh-web"].id,
       documentType: DocumentType.NOTE,
@@ -154,8 +195,9 @@ async function seedDocuments(
       downloads: 720,
     },
     {
-      title: "Bai tap thuc hanh Co so du lieu",
-      description: "Mo hinh quan he, SQL truy van va chuan hoa du lieu.",
+      title: "Bài tập thực hành Cơ sở dữ liệu",
+      oldTitle: "Bai tap thuc hanh Co so du lieu",
+      description: "Mô hình quan hệ, truy vấn SQL và chuẩn hóa dữ liệu.",
       schoolId: bachKhoa.id,
       subjectId: subjects["co-so-du-lieu"].id,
       documentType: DocumentType.ASSIGNMENT,
@@ -163,8 +205,9 @@ async function seedDocuments(
       downloads: 488,
     },
     {
-      title: "De cuong Marketing can ban",
-      description: "Kien thuc trong tam va cau hoi on thi.",
+      title: "Đề cương Marketing căn bản",
+      oldTitle: "De cuong Marketing can ban",
+      description: "Kiến thức trọng tâm và câu hỏi ôn thi.",
       schoolId: kinhTe.id,
       subjectId: subjects.marketing.id,
       documentType: DocumentType.LECTURE,
@@ -172,19 +215,160 @@ async function seedDocuments(
       downloads: 614,
     },
     {
-      title: "Tai lieu tham khao Tieng Anh hoc thuat",
-      description: "Mau viet luan va tu vung theo chu de.",
+      title: "Tài liệu tham khảo Tiếng Anh học thuật",
+      oldTitle: "Tai lieu tham khao Tieng Anh hoc thuat",
+      description: "Mẫu viết luận và từ vựng theo chủ đề.",
       schoolId: ngoaiThuong.id,
       subjectId: subjects["tieng-anh"].id,
       documentType: DocumentType.OTHER,
       pages: 67,
       downloads: 301,
     },
+    {
+      title: "Nhập môn SQL và thiết kế cơ sở dữ liệu",
+      oldTitle: "Nhap mon SQL va thiet ke co so du lieu",
+      description: "Hướng dẫn truy vấn SQL, khóa chính, khóa ngoại và chỉ mục.",
+      schoolId: bachKhoa.id,
+      subjectId: subjects["co-so-du-lieu"].id,
+      documentType: DocumentType.LECTURE,
+      pages: 73,
+      downloads: 842,
+    },
+    {
+      title: "Bộ bài tập React Hooks nâng cao",
+      oldTitle: "Bo bai tap React Hooks nang cao",
+      description: "Bài tập thực hành useEffect, useMemo, custom hook và form.",
+      schoolId: fpt.id,
+      subjectId: subjects["lap-trinh-web"].id,
+      documentType: DocumentType.ASSIGNMENT,
+      pages: 29,
+      downloads: 536,
+    },
+    {
+      title: "Tổng hợp công thức Xác suất thống kê",
+      oldTitle: "Tong hop cong thuc Xac suat thong ke",
+      description: "Bảng công thức phân phối, ước lượng và kiểm định giả thuyết.",
+      schoolId: kinhTe.id,
+      subjectId: subjects["xac-suat-thong-ke"].id,
+      documentType: DocumentType.NOTE,
+      pages: 24,
+      downloads: 698,
+    },
+    {
+      title: "Đề thi thử Tiếng Anh đầu ra",
+      oldTitle: "De thi thu Tieng Anh dau ra",
+      description: "Bộ đề luyện đọc hiểu, ngữ pháp và viết luận ngắn.",
+      schoolId: ngoaiThuong.id,
+      subjectId: subjects["tieng-anh"].id,
+      documentType: DocumentType.EXAM,
+      pages: 32,
+      downloads: 457,
+    },
+    {
+      title: "Hướng dẫn làm đồ án Lập trình Web",
+      oldTitle: "Huong dan lam do an Lap trinh Web",
+      description: "Quy trình phân tích yêu cầu, thiết kế giao diện và triển khai API.",
+      schoolId: fpt.id,
+      subjectId: subjects["lap-trinh-web"].id,
+      documentType: DocumentType.LECTURE,
+      pages: 64,
+      downloads: 512,
+    },
+    {
+      title: "100 câu hỏi trắc nghiệm Cơ sở dữ liệu",
+      oldTitle: "100 cau hoi trac nghiem Co so du lieu",
+      description: "Bộ câu hỏi ôn tập về ERD, SQL, transaction và chuẩn hóa.",
+      schoolId: bachKhoa.id,
+      subjectId: subjects["co-so-du-lieu"].id,
+      documentType: DocumentType.EXAM,
+      pages: 28,
+      downloads: 774,
+    },
+    {
+      title: "Bài giảng cây nhị phân và hàng đợi ưu tiên",
+      oldTitle: "Bai giang cay nhi phan va hang doi uu tien",
+      description: "Nội dung lý thuyết và ví dụ cài đặt bằng TypeScript.",
+      schoolId: bachKhoa.id,
+      subjectId: subjects["cau-truc-du-lieu"].id,
+      documentType: DocumentType.LECTURE,
+      pages: 52,
+      downloads: 683,
+    },
+    {
+      title: "Case study chiến lược Marketing số",
+      oldTitle: "Case study chien luoc Marketing so",
+      description: "Phân tích chiến dịch, hành trình khách hàng và KPI truyền thông.",
+      schoolId: kinhTe.id,
+      subjectId: subjects.marketing.id,
+      documentType: DocumentType.NOTE,
+      pages: 46,
+      downloads: 429,
+    },
+    {
+      title: "Mẫu báo cáo thực tập ngành CNTT",
+      oldTitle: "Mau bao cao thuc tap nganh CNTT",
+      description: "Khung trình bày báo cáo, mục lục và các phần nội dung cần có.",
+      schoolId: fpt.id,
+      subjectId: subjects["lap-trinh-web"].id,
+      documentType: DocumentType.OTHER,
+      pages: 38,
+      downloads: 590,
+    },
+    {
+      title: "Phương pháp giải bài tập xác suất có điều kiện",
+      oldTitle: "Phuong phap giai bai tap xac suat co dieu kien",
+      description: "Tổng hợp dạng bài Bayes, biến cố độc lập và bảng phân phối.",
+      schoolId: kinhTe.id,
+      subjectId: subjects["xac-suat-thong-ke"].id,
+      documentType: DocumentType.ASSIGNMENT,
+      pages: 31,
+      downloads: 622,
+    },
+    {
+      title: "Từ vựng Tiếng Anh học thuật theo chủ đề",
+      oldTitle: "Tu vung Tieng Anh hoc thuat theo chu de",
+      description: "Danh sách từ vựng, collocation và bài tập ứng dụng.",
+      schoolId: ngoaiThuong.id,
+      subjectId: subjects["tieng-anh"].id,
+      documentType: DocumentType.NOTE,
+      pages: 44,
+      downloads: 389,
+    },
+    {
+      title: "Đề cương ôn tập Cấu trúc dữ liệu giữa kỳ",
+      oldTitle: "De cuong on tap Cau truc du lieu giua ky",
+      description: "Tổng hợp danh sách liên kết, stack, queue, tree và graph.",
+      schoolId: bachKhoa.id,
+      subjectId: subjects["cau-truc-du-lieu"].id,
+      documentType: DocumentType.EXAM,
+      pages: 22,
+      downloads: 803,
+    },
+    {
+      title: "Checklist tối ưu UX cho website học tập",
+      oldTitle: "Checklist toi uu UX cho website hoc tap",
+      description: "Danh sách kiểm tra điều hướng, form, khả năng đọc và responsive.",
+      schoolId: fpt.id,
+      subjectId: subjects["lap-trinh-web"].id,
+      documentType: DocumentType.OTHER,
+      pages: 19,
+      downloads: 344,
+    },
+    {
+      title: "Bài tập lớn phân tích dữ liệu Marketing",
+      oldTitle: "Bai tap lon phan tich du lieu Marketing",
+      description: "Hướng dẫn thu thập dữ liệu, phân khúc người dùng và báo cáo insight.",
+      schoolId: kinhTe.id,
+      subjectId: subjects.marketing.id,
+      documentType: DocumentType.ASSIGNMENT,
+      pages: 58,
+      downloads: 471,
+    },
   ];
 
   for (const document of documents) {
     const existing = await prisma.document.findFirst({
-      where: { title: document.title, uploaderId: userId },
+      where: { title: { in: [document.title, document.oldTitle] }, uploaderId: userId },
     });
     const data = {
       schoolId: document.schoolId,
@@ -195,11 +379,18 @@ async function seedDocuments(
       status: DocumentStatus.APPROVED,
       downloadCount: document.downloads,
       viewCount: document.downloads * 3,
-      approvedBy: adminId,
+      approvedBy: approverId,
       approvedAt: new Date(),
     };
+    let fileUrl = `https://example.com/documents/${encodeURIComponent(document.title)}.pdf`;
+    
+    // Use custom file URL if provided
+    if (document.fileUrl) {
+      fileUrl = document.fileUrl;
+    }
+
     const file = {
-      fileUrl: `https://example.com/documents/${encodeURIComponent(document.title)}.pdf`,
+      fileUrl: fileUrl,
       originalFilename: `${document.title}.pdf`,
       fileType: FileType.PDF,
       fileSize: document.pages * 12000,
@@ -233,14 +424,18 @@ async function seedDocuments(
 }
 
 async function main() {
-  const { admin, user } = await seedUsers();
+  const { admin, users } = await seedUsers();
   const catalogs = await seedCatalog();
   await seedPlans();
-  await seedDocuments(user.id, admin.id, catalogs);
+  await seedDocuments(users[0].id, admin.id, catalogs);
 
   console.log("Seed completed.");
-  console.log(`Admin: admin@hoclieu.local / ${demoPassword}`);
-  console.log(`User: student@hoclieu.local / ${demoPassword}`);
+  console.log(`Admin: ${admin.email} / ${demoPassword}`);
+  console.log("Users:");
+  for (const user of users) {
+    console.log(`- ${user.email} / ${demoPassword}`);
+  }
+  console.log(`Documents uploaded by: ${users[0].email}`);
 }
 
 main()
