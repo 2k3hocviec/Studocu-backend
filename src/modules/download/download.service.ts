@@ -6,6 +6,9 @@ export const downloadService = {
   async download(userId: number, documentId: number) {
     const document = await downloadRepository.findDocument(documentId);
     if (!document || !document.documentFile) throw new AppError("Document is unavailable for download", 404);
+    if (document.uploaderId !== userId && !(await downloadRepository.activeSubscription(userId))) {
+      throw new AppError("Premium is required to download", 403);
+    }
     await downloadRepository.record(userId, documentId);
     return { fileUrl: `/documents/${documentId}/file?download=1` };
   },

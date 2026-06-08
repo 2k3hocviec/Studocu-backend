@@ -19,9 +19,24 @@ function previewPageLimit(totalPages?: number | null, previewCount = 0) {
   return previewPageCount(pageCount);
 }
 
-function canViewFull(document: Awaited<ReturnType<typeof documentRepository.findDetail>>, actor: Actor) {
-  if (!document || !actor?.userId) return false;
-  return actor.userId === document.uploaderId || isModerator(actor) || Boolean(actor.userId);
+async function accessInfo(document: Awaited<ReturnType<typeof documentRepository.findDetail>>, actor: Actor) {
+  const owner = Boolean(document && actor?.userId === document.uploaderId);
+  const moderator = isModerator(actor);
+  if (!document || !actor?.userId) {
+    return { canViewFull: false, isOwner: owner, hasPremium: false, creditBalance: null };
+  }
+
+  const [subscription, credit] = await Promise.all([
+    owner || moderator ? Promise.resolve(null) : documentRepository.activeSubscription(actor.userId),
+    documentRepository.userCreditBalance(actor.userId),
+  ]);
+
+  return {
+    canViewFull: owner || moderator || Boolean(subscription),
+    isOwner: owner,
+    hasPremium: Boolean(subscription),
+    creditBalance: credit?.creditBalance ?? 0,
+  };
 }
 
 function fileContentType(fileType: string) {
@@ -82,7 +97,7 @@ export const documentService = {
       await documentRepository.recordUserView(id, actor.userId);
     }
 
-    const fullAccess = canViewFull(document, actor);
+    const access = await accessInfo(document, actor);
     const previewLimit = previewPageLimit(document.documentFile?.totalPages, document.previews.length);
     const reactionCounts = await documentRepository.reactionCounts(id);
     const myReaction = actor?.userId ? await documentRepository.findReaction(id, actor.userId) : null;
@@ -97,17 +112,14 @@ export const documentService = {
 
     return {
       ...document,
-      accessInfo: {
-        canViewFull: fullAccess,
-        isOwner: owner,
-      },
+      accessInfo: access,
       reactionInfo: {
         likeCount,
         dislikeCount,
         myReaction: myReaction?.type ?? null,
       },
       documentFile,
-      previews: fullAccess && !previewOnly
+      previews: access.canViewFull && !previewOnly
         ? document.previews
         : document.previews.filter((page) => page.pageNumber <= previewLimit),
     };
@@ -123,8 +135,8 @@ export const documentService = {
       throw new AppError("Document not found", 404);
     }
     if (!document.documentFile?.fileUrl) throw new AppError("Document file not found", 404);
-    if (!canViewFull(document, actor)) {
-      throw new AppError("Must be logged in to view the full file", 401);
+    if (!(await accessInfo(document, actor)).canViewFull) {
+      throw new AppError("Premium is required to view the full file", 403);
     }
 
     return {
@@ -180,8 +192,8 @@ export const documentService = {
     if (document.status !== DocumentStatus.APPROVED && actor.userId !== document.uploaderId && !isModerator(actor)) {
       throw new AppError("Document not found", 404);
     }
-    if (!canViewFull(document, actor)) {
-      throw new AppError("Must be logged in to react", 401);
+    if (!(await accessInfo(document, actor)).canViewFull) {
+      throw new AppError("Premium is required to react", 403);
     }
 
     if (type) {
@@ -252,8 +264,8 @@ export const documentService = {
     if (document.status !== DocumentStatus.APPROVED && actor.userId !== document.uploaderId && !isModerator(actor)) {
       throw new AppError("Document not available", 403);
     }
-    if (!canViewFull(document, actor)) {
-      throw new AppError("Must be logged in to download", 401);
+    if (!(await accessInfo(document, actor)).canViewFull) {
+      throw new AppError("Premium is required to download", 403);
     }
 
     await documentRepository.recordDownload(documentId, actor.userId);
