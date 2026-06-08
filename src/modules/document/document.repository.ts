@@ -1,4 +1,4 @@
-import { CreditTransactionType, DocumentStatus, DocumentType, Prisma, ReactionType } from "@prisma/client";
+import { CreditTransactionType, DocumentStatus, DocumentType, Prisma, ReactionType, SubscriptionStatus } from "@prisma/client";
 import { prisma } from "../../database/prisma";
 import { pagination } from "../../utils/pagination";
 
@@ -66,6 +66,13 @@ export const documentRepository = {
     ]);
   },
   findDetail: (id: number) => prisma.document.findFirst({ where: { id, deletedAt: null }, include: detailInclude }),
+  activeSubscription: (userId: number) =>
+    prisma.subscription.findFirst({
+      where: { userId, status: SubscriptionStatus.ACTIVE, endDate: { gt: new Date() } },
+      select: { id: true },
+    }),
+  userCreditBalance: (userId: number) =>
+    prisma.user.findUnique({ where: { id: userId }, select: { creditBalance: true } }),
   reactionCounts: (documentId: number) =>
     prisma.documentReaction.groupBy({
       by: ["type"],
