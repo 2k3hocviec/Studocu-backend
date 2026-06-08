@@ -1,6 +1,7 @@
 import { RequestHandler } from "express";
 import { AppError } from "../../middlewares/errorHandler";
 import { sendSuccess } from "../../utils/response";
+import { isLocalDocumentUrl, readLocalDocumentFile, signedCloudinaryRawDownloadUrl } from "../../utils/storage";
 import { documentService } from "./document.service";
 
 export const list: RequestHandler = async (req, res, next) => {
@@ -10,6 +11,8 @@ export const list: RequestHandler = async (req, res, next) => {
       subjectId: req.query.subjectId ? Number(req.query.subjectId) : undefined,
       type: req.query.type as never,
       search: req.query.search as string | undefined,
+      schoolName: req.query.schoolName as string | undefined,
+      subjectName: req.query.subjectName as string | undefined,
       status: req.query.status as never,
     }, req.user));
   } catch (error) { next(error); }
@@ -66,13 +69,27 @@ export const file: RequestHandler = async (req, res, next) => {
       req.user,
       req.query.download === "1" || req.query.download === "true",
     );
-    const upstream = await fetch(fileInfo.fileUrl);
+    const safeFilename = fileInfo.filename.replace(/"/g, "'");
+
+    if (isLocalDocumentUrl(fileInfo.fileUrl)) {
+      const body = await readLocalDocumentFile(fileInfo.fileUrl);
+      res.setHeader("Content-Type", fileInfo.contentType);
+      res.setHeader("Content-Length", body.length);
+      res.setHeader("Content-Disposition", `${fileInfo.disposition}; filename="${safeFilename}"; filename*=UTF-8''${encodeURIComponent(fileInfo.filename)}`);
+      res.send(body);
+      return;
+    }
+
+    const remoteFileUrl = signedCloudinaryRawDownloadUrl(fileInfo.fileUrl) ?? fileInfo.fileUrl;
+    const upstream = await fetch(remoteFileUrl).catch((error) => {
+      const message = error instanceof Error ? error.message : "unknown error";
+      throw new AppError(`Document file storage request failed: ${message}`, 502);
+    });
     if (!upstream.ok) {
-      throw new AppError("Document file unavailable", 502);
+      throw new AppError(`Document file unavailable from storage (${upstream.status})`, 502);
     }
 
     const body = Buffer.from(await upstream.arrayBuffer());
-    const safeFilename = fileInfo.filename.replace(/"/g, "'");
     res.setHeader("Content-Type", upstream.headers.get("content-type") || fileInfo.contentType);
     res.setHeader("Content-Length", body.length);
     res.setHeader("Content-Disposition", `${fileInfo.disposition}; filename="${safeFilename}"; filename*=UTF-8''${encodeURIComponent(fileInfo.filename)}`);

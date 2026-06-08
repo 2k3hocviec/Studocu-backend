@@ -80,6 +80,11 @@ function thumbnailUrl(imageUrl?: string | null) {
   return imageUrl.replace("/upload/", "/upload/f_auto,q_auto,w_480/");
 }
 
+function normalizeName(value?: string | null) {
+  const normalized = value?.trim();
+  return normalized || null;
+}
+
 async function documentDetailPayload(
   document: NonNullable<Awaited<ReturnType<typeof documentRepository.findDetail>>>,
   actor: Actor,
@@ -114,13 +119,15 @@ async function documentDetailPayload(
 }
 
 export const documentService = {
-  async list(page: number, limit: number, filters: { schoolId?: number; subjectId?: number; type?: NewDocumentData["documentType"]; search?: string; status?: DocumentStatus }, actor?: Actor) {
+  async list(page: number, limit: number, filters: { schoolId?: number; subjectId?: number; type?: NewDocumentData["documentType"]; search?: string; schoolName?: string; subjectName?: string; status?: DocumentStatus }, actor?: Actor) {
     const isAdmin = actor?.role === UserRole.ADMIN || actor?.role === UserRole.MODERATOR;
     const [items, total] = await documentRepository.list(page, limit, {
       schoolId: filters.schoolId,
       subjectId: filters.subjectId,
       type: filters.type,
       search: filters.search,
+      schoolName: filters.schoolName,
+      subjectName: filters.subjectName,
       status: filters.status,
       isAdmin,
     });
@@ -171,6 +178,15 @@ export const documentService = {
   },
 
   async create(input: Omit<NewDocumentData, "uploaderId" | "file"> & NewDocumentData["file"], uploaderId: number, uploaded?: Express.Multer.File) {
+    const requestedSchoolName = normalizeName(input.requestedSchoolName);
+    const requestedSubjectName = normalizeName(input.requestedSubjectName);
+    if (!input.schoolId && !requestedSchoolName) {
+      throw new AppError("Vui lòng chọn hoặc nhập trường học.", 400);
+    }
+    if (!input.subjectId && !requestedSubjectName) {
+      throw new AppError("Vui lòng chọn hoặc nhập môn học.", 400);
+    }
+
     const generatedPreview = uploaded ? await generateDocumentPreview(uploaded, input.fileType) : null;
     const totalPages = generatedPreview?.totalPages ?? input.totalPages;
     if (totalPages && totalPages < 3) {
@@ -195,13 +211,18 @@ export const documentService = {
       : undefined;
 
     return documentRepository.create({
-      uploaderId, schoolId: input.schoolId, subjectId: input.subjectId, title: input.title,
+      uploaderId,
+      schoolId: input.schoolId ?? null,
+      subjectId: input.subjectId ?? null,
+      requestedSchoolName: input.schoolId ? null : requestedSchoolName,
+      requestedSubjectName: input.subjectId ? null : requestedSubjectName,
+      title: input.title,
       description: input.description, documentType: input.documentType,
       file: {
         fileUrl, previewUrl: input.previewUrl,
         originalFilename: input.originalFilename ?? uploaded?.originalname ?? "document",
         fileType: input.fileType, fileSize: input.fileSize ?? uploaded?.size ?? 1,
-        totalPages, storageProvider: input.storageProvider,
+        totalPages, storageProvider: uploaded ? "LOCAL" : input.storageProvider,
       },
       previews: generatedPreviews ?? input.previews,
     });
@@ -296,6 +317,12 @@ export const documentService = {
   async approve(id: number, moderatorId: number) {
     const document = await documentRepository.findDetail(id);
     if (!document) throw new AppError("Document not found", 404);
+    if (!document.schoolId && !normalizeName(document.requestedSchoolName)) {
+      throw new AppError("Không thể duyệt vì tài liệu chưa có trường học.", 400);
+    }
+    if (!document.subjectId && !normalizeName(document.requestedSubjectName)) {
+      throw new AppError("Không thể duyệt vì tài liệu chưa có môn học.", 400);
+    }
     const shouldNotify = document.status !== DocumentStatus.APPROVED;
     const approvedDocument = await documentRepository.approveWithReward(id, moderatorId, document.uploaderId, shouldNotify);
     if (shouldNotify) {

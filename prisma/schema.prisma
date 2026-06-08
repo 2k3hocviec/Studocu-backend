@@ -47,6 +47,7 @@ enum FileType {
 
 enum StorageProvider {
   CLOUDINARY
+  LOCAL
   S3
 }
 
@@ -151,8 +152,10 @@ model Subject {
 model Document {
   id            Int            @id @default(autoincrement())
   uploaderId    Int            @map("uploader_id")
-  schoolId      Int            @map("school_id")
-  subjectId     Int            @map("subject_id")
+  schoolId      Int?           @map("school_id")
+  subjectId     Int?           @map("subject_id")
+  requestedSchoolName String?  @map("requested_school_name")
+  requestedSubjectName String? @map("requested_subject_name")
   title         String
   description   String?
   documentType  DocumentType   @map("document_type")
@@ -168,8 +171,8 @@ model Document {
   deletedAt     DateTime?      @map("deleted_at")
   uploader           User               @relation("UploaderDocuments", fields: [uploaderId], references: [id])
   approver           User?              @relation("ApproverDocuments", fields: [approvedBy], references: [id])
-  school             School             @relation(fields: [schoolId], references: [id])
-  subject            Subject            @relation(fields: [subjectId], references: [id])
+  school             School?            @relation(fields: [schoolId], references: [id])
+  subject            Subject?           @relation(fields: [subjectId], references: [id])
   documentFile       DocumentFile?
   previews           DocumentPreview[]
   downloads          Download[]
