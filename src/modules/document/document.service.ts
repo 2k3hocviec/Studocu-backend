@@ -8,6 +8,7 @@ import { uploadDocumentFile, uploadDocumentPreviewImage } from "../../utils/stor
 import { documentRepository, NewDocumentData } from "./document.repository";
 
 type Actor = { userId: number; role: UserRole } | undefined;
+const DOCUMENT_UNLOCK_CREDIT_COST = 1;
 
 function isModerator(actor: Actor) {
   return actor?.role === UserRole.ADMIN || actor?.role === UserRole.MODERATOR;
@@ -23,19 +24,33 @@ async function accessInfo(document: Awaited<ReturnType<typeof documentRepository
   const owner = Boolean(document && actor?.userId === document.uploaderId);
   const moderator = isModerator(actor);
   if (!document || !actor?.userId) {
-    return { canViewFull: false, isOwner: owner, hasPremium: false, creditBalance: null };
+    return {
+      canViewFull: false,
+      isOwner: owner,
+      hasPremium: false,
+      hasCreditAccess: false,
+      creditBalance: null,
+      creditCost: DOCUMENT_UNLOCK_CREDIT_COST,
+      canUnlockWithCredits: false,
+    };
   }
 
-  const [subscription, credit] = await Promise.all([
+  const [subscription, credit, existingCreditUnlock] = await Promise.all([
     owner || moderator ? Promise.resolve(null) : documentRepository.activeSubscription(actor.userId),
     documentRepository.userCreditBalance(actor.userId),
+    owner || moderator ? Promise.resolve(null) : documentRepository.creditUnlock(actor.userId, document.id),
   ]);
+  let creditBalance = credit?.creditBalance ?? 0;
+  let hasCreditAccess = Boolean(existingCreditUnlock);
 
   return {
-    canViewFull: owner || moderator || Boolean(subscription),
+    canViewFull: owner || moderator || Boolean(subscription) || hasCreditAccess,
     isOwner: owner,
     hasPremium: Boolean(subscription),
-    creditBalance: credit?.creditBalance ?? 0,
+    hasCreditAccess,
+    creditBalance,
+    creditCost: DOCUMENT_UNLOCK_CREDIT_COST,
+    canUnlockWithCredits: !owner && !moderator && !subscription && !hasCreditAccess && creditBalance >= DOCUMENT_UNLOCK_CREDIT_COST,
   };
 }
 
@@ -63,6 +78,39 @@ function thumbnailUrl(imageUrl?: string | null) {
   if (!imageUrl) return null;
   if (!imageUrl.includes("/upload/")) return imageUrl;
   return imageUrl.replace("/upload/", "/upload/f_auto,q_auto,w_480/");
+}
+
+async function documentDetailPayload(
+  document: NonNullable<Awaited<ReturnType<typeof documentRepository.findDetail>>>,
+  actor: Actor,
+  previewOnly = false,
+) {
+  const access = await accessInfo(document, actor);
+  const previewLimit = previewPageLimit(document.documentFile?.totalPages, document.previews.length);
+  const reactionCounts = await documentRepository.reactionCounts(document.id);
+  const myReaction = actor?.userId ? await documentRepository.findReaction(document.id, actor.userId) : null;
+  const likeCount = reactionCounts.find((reaction) => reaction.type === ReactionType.LIKE)?._count.type ?? 0;
+  const dislikeCount = reactionCounts.find((reaction) => reaction.type === ReactionType.DISLIKE)?._count.type ?? 0;
+  const documentFile = document.documentFile
+    ? {
+        ...document.documentFile,
+        fileUrl: null,
+      }
+    : null;
+
+  return {
+    ...document,
+    accessInfo: access,
+    reactionInfo: {
+      likeCount,
+      dislikeCount,
+      myReaction: myReaction?.type ?? null,
+    },
+    documentFile,
+    previews: access.canViewFull && !previewOnly
+      ? document.previews
+      : document.previews.filter((page) => page.pageNumber <= previewLimit),
+  };
 }
 
 export const documentService = {
@@ -97,32 +145,7 @@ export const documentService = {
       await documentRepository.recordUserView(id, actor.userId);
     }
 
-    const access = await accessInfo(document, actor);
-    const previewLimit = previewPageLimit(document.documentFile?.totalPages, document.previews.length);
-    const reactionCounts = await documentRepository.reactionCounts(id);
-    const myReaction = actor?.userId ? await documentRepository.findReaction(id, actor.userId) : null;
-    const likeCount = reactionCounts.find((reaction) => reaction.type === ReactionType.LIKE)?._count.type ?? 0;
-    const dislikeCount = reactionCounts.find((reaction) => reaction.type === ReactionType.DISLIKE)?._count.type ?? 0;
-    const documentFile = document.documentFile
-      ? {
-          ...document.documentFile,
-          fileUrl: null,
-        }
-      : null;
-
-    return {
-      ...document,
-      accessInfo: access,
-      reactionInfo: {
-        likeCount,
-        dislikeCount,
-        myReaction: myReaction?.type ?? null,
-      },
-      documentFile,
-      previews: access.canViewFull && !previewOnly
-        ? document.previews
-        : document.previews.filter((page) => page.pageNumber <= previewLimit),
-    };
+    return documentDetailPayload(document, actor, previewOnly);
   },
 
   async protectedFile(documentId: number, actor: Actor, download = false) {
@@ -136,7 +159,7 @@ export const documentService = {
     }
     if (!document.documentFile?.fileUrl) throw new AppError("Document file not found", 404);
     if (!(await accessInfo(document, actor)).canViewFull) {
-      throw new AppError("Premium is required to view the full file", 403);
+      throw new AppError("Premium or credit is required to view the full file", 403);
     }
 
     return {
@@ -193,7 +216,7 @@ export const documentService = {
       throw new AppError("Document not found", 404);
     }
     if (!(await accessInfo(document, actor)).canViewFull) {
-      throw new AppError("Premium is required to react", 403);
+      throw new AppError("Premium or credit is required to react", 403);
     }
 
     if (type) {
@@ -215,6 +238,48 @@ export const documentService = {
     if (!document) throw new AppError("Document not found", 404);
     if (document.uploaderId !== userId) throw new AppError("You can only update your own document", 403);
     return documentRepository.update(id, data);
+  },
+
+  async unlockWithCredit(documentId: number, actor: Actor) {
+    if (!actor?.userId) throw new AppError("Must be logged in", 401);
+
+    const document = await documentRepository.findDetail(documentId);
+    if (!document) throw new AppError("Document not found", 404);
+    const owner = actor.userId === document.uploaderId;
+    if (document.status !== DocumentStatus.APPROVED && !owner && !isModerator(actor)) {
+      throw new AppError("Document not available", 403);
+    }
+
+    const currentAccess = await accessInfo(document, actor);
+    if (currentAccess.canViewFull) {
+      return {
+        charged: false,
+        creditCost: DOCUMENT_UNLOCK_CREDIT_COST,
+        creditBalance: currentAccess.creditBalance,
+        accessInfo: currentAccess,
+        document: await documentDetailPayload(document, actor),
+      };
+    }
+    if ((currentAccess.creditBalance ?? 0) < DOCUMENT_UNLOCK_CREDIT_COST) {
+      throw new AppError("Not enough credit to unlock this document", 403);
+    }
+
+    const unlock = await documentRepository.unlockWithCredit(actor.userId, documentId, DOCUMENT_UNLOCK_CREDIT_COST);
+    if (!unlock) {
+      throw new AppError("Not enough credit to unlock this document", 403);
+    }
+
+    const unlockedDocument = await documentRepository.findDetail(documentId);
+    if (!unlockedDocument) throw new AppError("Document not found", 404);
+    const payload = await documentDetailPayload(unlockedDocument, actor);
+
+    return {
+      charged: unlock.charged,
+      creditCost: DOCUMENT_UNLOCK_CREDIT_COST,
+      creditBalance: unlock.creditBalance,
+      accessInfo: payload.accessInfo,
+      document: payload,
+    };
   },
 
   async remove(id: number, userId: number, role: UserRole) {
@@ -265,7 +330,7 @@ export const documentService = {
       throw new AppError("Document not available", 403);
     }
     if (!(await accessInfo(document, actor)).canViewFull) {
-      throw new AppError("Premium is required to download", 403);
+      throw new AppError("Premium or credit is required to download", 403);
     }
 
     await documentRepository.recordDownload(documentId, actor.userId);

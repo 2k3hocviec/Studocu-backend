@@ -1,15 +1,16 @@
+import { UserRole } from "@prisma/client";
 import { AppError } from "../../middlewares/errorHandler";
 import { paginated } from "../../utils/pagination";
+import { documentService } from "../document/document.service";
 import { downloadRepository } from "./download.repository";
 
+type Actor = { userId: number; role: UserRole };
+
 export const downloadService = {
-  async download(userId: number, documentId: number) {
+  async download(actor: Actor, documentId: number) {
     const document = await downloadRepository.findDocument(documentId);
     if (!document || !document.documentFile) throw new AppError("Document is unavailable for download", 404);
-    if (document.uploaderId !== userId && !(await downloadRepository.activeSubscription(userId))) {
-      throw new AppError("Premium is required to download", 403);
-    }
-    await downloadRepository.record(userId, documentId);
+    await documentService.recordDownload(documentId, actor);
     return { fileUrl: `/documents/${documentId}/file?download=1` };
   },
   async history(userId: number, page: number, limit: number) {

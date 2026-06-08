@@ -21,4 +21,5 @@ router.patch("/:id/hide", authenticate, allowRoles(UserRole.ADMIN, UserRole.MODE
 router.patch("/:id/unhide", authenticate, allowRoles(UserRole.ADMIN, UserRole.MODERATOR), validate(documentIdSchema, "params"), controller.unhide);
 router.post("/:id/download", authenticate, validate(documentIdSchema, "params"), controller.recordDownload);
 router.post("/:id/reaction", authenticate, validate(documentIdSchema, "params"), validate(reactionSchema), controller.react);
+router.post("/:id/unlock-credit", authenticate, validate(documentIdSchema, "params"), controller.unlockWithCredit);
 export default router;

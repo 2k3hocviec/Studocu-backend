@@ -6,6 +6,7 @@ const envSchema = z.object({
   JWT_ACCESS_SECRET: z.string().min(32),
   JWT_REFRESH_SECRET: z.string().min(32),
   PORT: z.coerce.number().int().positive().default(3000),
+  HOST: z.string().default("0.0.0.0"),
   NODE_ENV: z.enum(["development", "test", "production"]).default("development"),
   CLOUDINARY_URL: z.string().optional(),
   SOFFICE_PATH: z.string().optional(),

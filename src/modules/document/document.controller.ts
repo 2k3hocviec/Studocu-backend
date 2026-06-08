@@ -55,6 +55,10 @@ export const react: RequestHandler = async (req, res, next) => {
   try { sendSuccess(res, await documentService.react(Number(req.params.id), req.user, req.body.type)); } catch (error) { next(error); }
 };
 
+export const unlockWithCredit: RequestHandler = async (req, res, next) => {
+  try { sendSuccess(res, await documentService.unlockWithCredit(Number(req.params.id), req.user)); } catch (error) { next(error); }
+};
+
 export const file: RequestHandler = async (req, res, next) => {
   try {
     const fileInfo = await documentService.protectedFile(

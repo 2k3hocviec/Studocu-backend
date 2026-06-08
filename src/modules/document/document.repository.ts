@@ -2,6 +2,8 @@ import { CreditTransactionType, DocumentStatus, DocumentType, Prisma, ReactionTy
 import { prisma } from "../../database/prisma";
 import { pagination } from "../../utils/pagination";
 
+const CREDIT_UNLOCK_TYPE = CreditTransactionType.USE_DOWNLOAD;
+
 export interface NewDocumentData {
   uploaderId: number;
   schoolId: number;
@@ -73,6 +75,34 @@ export const documentRepository = {
     }),
   userCreditBalance: (userId: number) =>
     prisma.user.findUnique({ where: { id: userId }, select: { creditBalance: true } }),
+  creditUnlock: (userId: number, documentId: number) =>
+    prisma.creditTransaction.findFirst({
+      where: { userId, documentId, type: CREDIT_UNLOCK_TYPE },
+      select: { id: true },
+    }),
+  unlockWithCredit: (userId: number, documentId: number, amount: number) =>
+    prisma.$transaction(async (tx) => {
+      const existingUnlock = await tx.creditTransaction.findFirst({
+        where: { userId, documentId, type: CREDIT_UNLOCK_TYPE },
+        select: { id: true },
+      });
+      if (existingUnlock) {
+        const user = await tx.user.findUnique({ where: { id: userId }, select: { creditBalance: true } });
+        return { charged: false, creditBalance: user?.creditBalance ?? 0 };
+      }
+
+      const updated = await tx.user.updateMany({
+        where: { id: userId, creditBalance: { gte: amount } },
+        data: { creditBalance: { decrement: amount } },
+      });
+      if (updated.count === 0) return null;
+
+      await tx.creditTransaction.create({
+        data: { userId, documentId, type: CREDIT_UNLOCK_TYPE, amount: -amount },
+      });
+      const user = await tx.user.findUnique({ where: { id: userId }, select: { creditBalance: true } });
+      return { charged: true, creditBalance: user?.creditBalance ?? 0 };
+    }),
   reactionCounts: (documentId: number) =>
     prisma.documentReaction.groupBy({
       by: ["type"],

@@ -37,8 +37,9 @@ app.use("/api/v1", routes);
 app.use(notFound);
 app.use(errorHandler);
 
-const server = app.listen(env.PORT, () => {
-  console.log(`Server is running on http://localhost:${env.PORT}`);
+const server = app.listen(env.PORT, env.HOST, () => {
+  const displayHost = env.HOST === "0.0.0.0" ? "localhost" : env.HOST;
+  console.log(`Server is running on http://${displayHost}:${env.PORT}`);
 });
 
 async function shutdown(signal: string) {
