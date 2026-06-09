@@ -36,7 +36,7 @@ async function sendMail({
       user: env.SMTP_USER,
       pass: env.SMTP_PASS,
     },
-  });
+  } as any);
 
   await transporter.sendMail({
     from: env.SMTP_FROM,
