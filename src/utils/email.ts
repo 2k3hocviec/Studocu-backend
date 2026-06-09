@@ -11,7 +11,30 @@ type MailOptions = {
 };
 
 function isEmailConfigured() {
-  return Boolean(env.SMTP_HOST && env.SMTP_USER && env.SMTP_PASS);
+  return Boolean(env.RESEND_API_KEY || (env.SMTP_HOST && env.SMTP_USER && env.SMTP_PASS));
+}
+
+async function sendMailWithResend({ to, subject, text }: MailOptions): Promise<void> {
+  if (!env.RESEND_API_KEY) return;
+
+  const response = await fetch("https://api.resend.com/emails", {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${env.RESEND_API_KEY}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      from: env.SMTP_FROM,
+      to,
+      subject,
+      text,
+    }),
+  });
+
+  if (!response.ok) {
+    const message = await response.text();
+    throw new AppError(`Email delivery failed: ${message}`, 500);
+  }
 }
 
 async function sendMail({
@@ -20,6 +43,11 @@ async function sendMail({
   text,
   failWhenUnconfigured = false,
 }: MailOptions): Promise<void> {
+  if (env.RESEND_API_KEY) {
+    await sendMailWithResend({ to, subject, text });
+    return;
+  }
+
   if (!env.SMTP_HOST || !env.SMTP_USER || !env.SMTP_PASS) {
     if (failWhenUnconfigured || env.NODE_ENV === "production") {
       throw new AppError("Email delivery is not configured", 500);

@@ -17,6 +17,7 @@ const envSchema = z.object({
   SMTP_USER: z.string().optional(),
   SMTP_PASS: z.string().optional(),
   SMTP_FROM: z.string().email().default("no-reply@example.com"),
+  RESEND_API_KEY: z.string().optional(),
   VNPAY_TMN_CODE: z.string().optional(),
   VNPAY_HASH_SECRET: z.string().optional(),
   VNPAY_PAYMENT_URL: z.string().url().default("https://sandbox.vnpayment.vn/paymentv2/vpcpay.html"),
