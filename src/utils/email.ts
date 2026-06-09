@@ -30,21 +30,10 @@ async function sendMail({
   const transporter = nodemailer.createTransport({
     host: env.SMTP_HOST,
     port: Number(env.SMTP_PORT),
-    secure: Number(env.SMTP_PORT) === 465,
-    requireTLS: Number(env.SMTP_PORT) === 587,
-
-    lookup: (
-      hostname: string,
-      options: dns.LookupOptions,
-      callback: (
-        err: NodeJS.ErrnoException | null,
-        address: string,
-        family: number,
-      ) => void,
-    ) => {
-      dns.lookup(hostname, { family: 4 }, callback);
-    },
-
+    secure: false,
+    connectionTimeout: 10000,
+    greetingTimeout: 10000,
+    socketTimeout: 10000,
     auth: {
       user: env.SMTP_USER,
       pass: env.SMTP_PASS,
