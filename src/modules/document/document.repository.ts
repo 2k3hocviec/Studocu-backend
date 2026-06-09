@@ -15,7 +15,6 @@ export interface NewDocumentData {
   documentType: DocumentType;
   file: {
     fileUrl: string;
-    previewUrl?: string;
     originalFilename: string;
     fileType: "PDF" | "DOCX" | "PPTX";
     fileSize: number;

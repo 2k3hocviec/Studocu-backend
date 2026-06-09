@@ -28,7 +28,6 @@ export const createDocumentSchema = z.object({
   description: z.string().max(3000).nullable().optional(),
   documentType: z.nativeEnum(DocumentType),
   fileUrl: z.string().url().optional(),
-  previewUrl: z.string().url().optional(),
   originalFilename: z.string().min(1).optional(),
   fileType: z.nativeEnum(FileType),
   fileSize: z.coerce.number().int().positive().optional(),

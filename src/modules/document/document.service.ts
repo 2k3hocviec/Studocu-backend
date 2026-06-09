@@ -219,7 +219,7 @@ export const documentService = {
       title: input.title,
       description: input.description, documentType: input.documentType,
       file: {
-        fileUrl, previewUrl: input.previewUrl,
+        fileUrl,
         originalFilename: input.originalFilename ?? uploaded?.originalname ?? "document",
         fileType: input.fileType, fileSize: input.fileSize ?? uploaded?.size ?? 1,
         totalPages, storageProvider: uploaded ? "LOCAL" : input.storageProvider,

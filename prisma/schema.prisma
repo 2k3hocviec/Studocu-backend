@@ -188,7 +188,6 @@ model DocumentFile {
   id               Int             @id @default(autoincrement())
   documentId       Int             @unique @map("document_id")
   fileUrl          String          @map("file_url")
-  previewUrl       String?         @map("preview_url")
   originalFilename String          @map("original_filename")
   fileType         FileType        @map("file_type")
   fileSize         Int             @map("file_size")
