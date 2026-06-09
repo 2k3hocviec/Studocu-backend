@@ -1,6 +1,7 @@
 import nodemailer from "nodemailer";
 import { env } from "../config/env";
 import { AppError } from "../middlewares/errorHandler";
+import dns from "node:dns";
 
 type MailOptions = {
   to: string;
@@ -30,8 +31,20 @@ async function sendMail({
     host: env.SMTP_HOST,
     port: Number(env.SMTP_PORT),
     secure: Number(env.SMTP_PORT) === 465,
-    family: 4,
     requireTLS: Number(env.SMTP_PORT) === 587,
+
+    lookup: (
+      hostname: string,
+      options: dns.LookupOptions,
+      callback: (
+        err: NodeJS.ErrnoException | null,
+        address: string,
+        family: number,
+      ) => void,
+    ) => {
+      dns.lookup(hostname, { family: 4 }, callback);
+    },
+
     auth: {
       user: env.SMTP_USER,
       pass: env.SMTP_PASS,
