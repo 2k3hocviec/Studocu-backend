@@ -28,10 +28,14 @@ async function sendMail({
 
   const transporter = nodemailer.createTransport({
     host: env.SMTP_HOST,
-    port: env.SMTP_PORT,
-    secure: env.SMTP_PORT === 465,
+    port: Number(env.SMTP_PORT),
+    secure: Number(env.SMTP_PORT) === 465,
     family: 4,
-    auth: { user: env.SMTP_USER, pass: env.SMTP_PASS },
+    requireTLS: Number(env.SMTP_PORT) === 587,
+    auth: {
+      user: env.SMTP_USER,
+      pass: env.SMTP_PASS,
+    },
   });
 
   await transporter.sendMail({
