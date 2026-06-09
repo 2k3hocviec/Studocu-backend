@@ -13,7 +13,12 @@ function isEmailConfigured() {
   return Boolean(env.SMTP_HOST && env.SMTP_USER && env.SMTP_PASS);
 }
 
-async function sendMail({ to, subject, text, failWhenUnconfigured = false }: MailOptions): Promise<void> {
+async function sendMail({
+  to,
+  subject,
+  text,
+  failWhenUnconfigured = false,
+}: MailOptions): Promise<void> {
   if (!env.SMTP_HOST || !env.SMTP_USER || !env.SMTP_PASS) {
     if (failWhenUnconfigured || env.NODE_ENV === "production") {
       throw new AppError("Email delivery is not configured", 500);
@@ -25,6 +30,7 @@ async function sendMail({ to, subject, text, failWhenUnconfigured = false }: Mai
     host: env.SMTP_HOST,
     port: env.SMTP_PORT,
     secure: env.SMTP_PORT === 465,
+    family: 4,
     auth: { user: env.SMTP_USER, pass: env.SMTP_PASS },
   });
 
@@ -45,7 +51,11 @@ async function sendNotificationEmail(options: MailOptions) {
   }
 }
 
-export async function sendOtpEmail(email: string, otpCode: string, purpose: string): Promise<void> {
+export async function sendOtpEmail(
+  email: string,
+  otpCode: string,
+  purpose: string,
+): Promise<void> {
   await sendMail({
     to: email,
     subject: `${purpose} OTP`,
