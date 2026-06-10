@@ -47,6 +47,7 @@ enum FileType {
 
 enum StorageProvider {
   CLOUDINARY
+  LOCAL
   S3
 }
 
@@ -81,6 +82,11 @@ enum CreditTransactionType {
   ADMIN_ADJUST
 }
 
+enum ReactionType {
+  LIKE
+  DISLIKE
+}
+
 model User {
   id             Int        @id @default(autoincrement())
   fullName       String     @map("full_name")
@@ -92,10 +98,13 @@ model User {
   creditBalance  Float      @default(0) @map("credit_balance")
   createdAt      DateTime   @default(now()) @map("created_at")
   updatedAt      DateTime   @updatedAt @map("updated_at")
+  deletedAt      DateTime?  @map("deleted_at")
   documents          Document[]          @relation("UploaderDocuments")
   approvedDocuments  Document[]          @relation("ApproverDocuments")
   downloads          Download[]
+  documentViews      DocumentView[]
   favorites          Favorite[]
+  documentReactions  DocumentReaction[]
   reports            Report[]            @relation("ReporterReports")
   handledReports     Report[]            @relation("HandlerReports")
   subscriptions      Subscription[]
@@ -121,6 +130,7 @@ model School {
   slug        String   @unique
   description String?
   createdAt   DateTime @default(now()) @map("created_at")
+  deletedAt   DateTime? @map("deleted_at")
   subjects    Subject[]
   documents   Document[]
   @@map("schools")
@@ -133,6 +143,7 @@ model Subject {
   slug        String   @unique
   description String?
   createdAt   DateTime @default(now()) @map("created_at")
+  deletedAt   DateTime? @map("deleted_at")
   school      School     @relation(fields: [schoolId], references: [id])
   documents   Document[]
   @@map("subjects")
@@ -141,28 +152,33 @@ model Subject {
 model Document {
   id            Int            @id @default(autoincrement())
   uploaderId    Int            @map("uploader_id")
-  schoolId      Int            @map("school_id")
-  subjectId     Int            @map("subject_id")
+  schoolId      Int?           @map("school_id")
+  subjectId     Int?           @map("subject_id")
+  requestedSchoolName String?  @map("requested_school_name")
+  requestedSubjectName String? @map("requested_subject_name")
   title         String
   description   String?
   documentType  DocumentType   @map("document_type")
   status        DocumentStatus @default(PENDING)
-  isPremium     Boolean        @default(false) @map("is_premium")
   viewCount     Int            @default(0) @map("view_count")
   downloadCount Int            @default(0) @map("download_count")
+  creditEarned  Boolean        @default(false) @map("credit_earned")
   rejectReason  String?        @map("reject_reason")
   approvedBy    Int?           @map("approved_by")
   approvedAt    DateTime?      @map("approved_at")
   createdAt     DateTime       @default(now()) @map("created_at")
   updatedAt     DateTime       @updatedAt @map("updated_at")
+  deletedAt     DateTime?      @map("deleted_at")
   uploader           User               @relation("UploaderDocuments", fields: [uploaderId], references: [id])
   approver           User?              @relation("ApproverDocuments", fields: [approvedBy], references: [id])
-  school             School             @relation(fields: [schoolId], references: [id])
-  subject            Subject            @relation(fields: [subjectId], references: [id])
+  school             School?            @relation(fields: [schoolId], references: [id])
+  subject            Subject?           @relation(fields: [subjectId], references: [id])
   documentFile       DocumentFile?
   previews           DocumentPreview[]
   downloads          Download[]
+  views              DocumentView[]
   favorites          Favorite[]
+  reactions          DocumentReaction[]
   reports            Report[]
   creditTransactions CreditTransaction[]
   @@map("documents")
@@ -172,7 +188,6 @@ model DocumentFile {
   id               Int             @id @default(autoincrement())
   documentId       Int             @unique @map("document_id")
   fileUrl          String          @map("file_url")
-  previewUrl       String?         @map("preview_url")
   originalFilename String          @map("original_filename")
   fileType         FileType        @map("file_type")
   fileSize         Int             @map("file_size")
@@ -199,10 +214,22 @@ model Download {
   userId       Int      @map("user_id")
   documentId   Int      @map("document_id")
   downloadedAt DateTime @default(now()) @map("downloaded_at")
-  creditUsed   Float    @default(0) @map("credit_used")
   user     User     @relation(fields: [userId], references: [id])
   document Document @relation(fields: [documentId], references: [id])
+  @@unique([userId, documentId])
   @@map("downloads")
+}
+
+model DocumentView {
+  id         Int      @id @default(autoincrement())
+  userId     Int      @map("user_id")
+  documentId Int      @map("document_id")
+  viewedAt   DateTime @default(now()) @map("viewed_at")
+  user       User     @relation(fields: [userId], references: [id])
+  document   Document @relation(fields: [documentId], references: [id])
+  @@unique([userId, documentId])
+  @@index([userId, viewedAt])
+  @@map("document_views")
 }
 
 model Favorite {
@@ -214,6 +241,19 @@ model Favorite {
   document Document @relation(fields: [documentId], references: [id])
   @@unique([userId, documentId])
   @@map("favorites")
+}
+
+model DocumentReaction {
+  id         Int          @id @default(autoincrement())
+  userId     Int          @map("user_id")
+  documentId Int          @map("document_id")
+  type       ReactionType
+  createdAt  DateTime     @default(now()) @map("created_at")
+  updatedAt  DateTime     @updatedAt @map("updated_at")
+  user       User         @relation(fields: [userId], references: [id])
+  document   Document     @relation(fields: [documentId], references: [id])
+  @@unique([userId, documentId])
+  @@map("document_reactions")
 }
 
 model Report {
@@ -282,5 +322,6 @@ model CreditTransaction {
   createdAt  DateTime              @default(now()) @map("created_at")
   user     User      @relation(fields: [userId], references: [id])
   document Document? @relation(fields: [documentId], references: [id])
+  @@unique([userId, documentId, type])
   @@map("credit_transactions")
 }

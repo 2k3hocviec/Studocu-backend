@@ -1,0 +1,18 @@
+import { paginated } from "../../utils/pagination";
+import { favoriteRepository } from "./favorite.repository";
+
+export const favoriteService = {
+  async toggle(userId: number, documentId: number) {
+    const existing = await favoriteRepository.find(userId, documentId);
+    if (existing) {
+      await favoriteRepository.remove(existing.id);
+      return { favorited: false };
+    }
+    await favoriteRepository.create(userId, documentId);
+    return { favorited: true };
+  },
+  async list(userId: number, page: number, limit: number) {
+    const [items, total] = await favoriteRepository.list(userId, page, limit);
+    return paginated(items, total, page, limit);
+  },
+};

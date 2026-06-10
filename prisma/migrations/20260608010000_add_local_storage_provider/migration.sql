@@ -1,0 +1,1 @@
+ALTER TYPE "StorageProvider" ADD VALUE IF NOT EXISTS 'LOCAL';
