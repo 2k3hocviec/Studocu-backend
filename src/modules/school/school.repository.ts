@@ -15,6 +15,11 @@ export const schoolRepository = {
   },
   create: (data: Prisma.SchoolCreateInput) => prisma.school.create({ data }),
   findById: (id: number) => prisma.school.findFirst({ where: { id, deletedAt: null } }),
+  countActiveRelations: (id: number) =>
+    Promise.all([
+      prisma.subject.count({ where: { schoolId: id, deletedAt: null } }),
+      prisma.document.count({ where: { schoolId: id, deletedAt: null } }),
+    ]),
   update: (id: number, data: Prisma.SchoolUpdateInput) => prisma.school.update({ where: { id }, data }),
   remove: (id: number) => prisma.school.update({ where: { id }, data: { deletedAt: new Date() } }),
 };

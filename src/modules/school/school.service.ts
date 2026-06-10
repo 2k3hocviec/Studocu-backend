@@ -14,6 +14,10 @@ export const schoolService = {
   },
   async remove(id: number) {
     if (!(await schoolRepository.findById(id))) throw new AppError("School not found", 404);
+    const [subjects, documents] = await schoolRepository.countActiveRelations(id);
+    if (subjects > 0 || documents > 0) {
+      throw new AppError("Cannot delete school because it has linked subjects or documents", 409);
+    }
     await schoolRepository.remove(id);
     return { message: "School deleted" };
   },

@@ -14,6 +14,7 @@ export const subjectRepository = {
   },
   create: (data: Prisma.SubjectUncheckedCreateInput) => prisma.subject.create({ data }),
   findById: (id: number) => prisma.subject.findFirst({ where: { id, deletedAt: null } }),
+  countActiveDocuments: (id: number) => prisma.document.count({ where: { subjectId: id, deletedAt: null } }),
   update: (id: number, data: Prisma.SubjectUncheckedUpdateInput) => prisma.subject.update({ where: { id }, data }),
   remove: (id: number) => prisma.subject.update({ where: { id }, data: { deletedAt: new Date() } }),
 };

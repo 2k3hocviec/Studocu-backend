@@ -14,6 +14,10 @@ export const subjectService = {
   },
   async remove(id: number) {
     if (!(await subjectRepository.findById(id))) throw new AppError("Subject not found", 404);
+    const documents = await subjectRepository.countActiveDocuments(id);
+    if (documents > 0) {
+      throw new AppError("Cannot delete subject because it has linked documents", 409);
+    }
     await subjectRepository.remove(id);
     return { message: "Subject deleted" };
   },
