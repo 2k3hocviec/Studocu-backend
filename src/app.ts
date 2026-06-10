@@ -42,6 +42,7 @@ const server = app.listen(env.PORT, env.HOST, () => {
   console.log(`Server is running on http://${displayHost}:${env.PORT}`);
 });
 
+/** Đóng server khi process nhận tín hiệu dừng. */
 async function shutdown(signal: string) {
   console.log(`${signal} received. Shutting down server.`);
   server.close(async () => {

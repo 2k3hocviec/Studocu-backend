@@ -12,10 +12,12 @@ import { env } from "../../config/env";
 import { authRepository } from "./auth.repository";
 import { LoginInput, RegisterInput } from "./auth.dto";
 
+/** Sinh mã OTP 6 chữ số. */
 function generateOtp(): string {
   return Math.floor(100000 + Math.random() * 900000).toString();
 }
 
+/** Tạo OTP mới, lưu vào database và gửi email cho người dùng. */
 async function issueOtp(email: string, type: OtpType) {
   const otpCode = generateOtp();
   const expiredAt = new Date(Date.now() + 10 * 60 * 1000);
@@ -24,12 +26,14 @@ async function issueOtp(email: string, type: OtpType) {
   return env.NODE_ENV === "production" ? undefined : otpCode;
 }
 
-function tokens(user: { id: number; email: string; role: "USER" | "ADMIN" | "MODERATOR" }) {
+/** Tạo cặp access token và refresh token cho user. */
+function tokens(user: { id: number; email: string; role: "USER" | "ADMIN" }) {
   const payload = { userId: user.id, email: user.email, role: user.role };
   return { accessToken: signAccessToken(payload), refreshToken: signRefreshToken(payload) };
 }
 
 export const authService = {
+  /** Đăng ký user mới và gửi OTP xác thực email. */
   async register(input: RegisterInput) {
     if (await authRepository.findUserByEmail(input.email)) {
       throw new AppError("Email is already registered", 409);
@@ -44,6 +48,7 @@ export const authService = {
     return { message: "Registration successful. Verify your email with the OTP sent.", debugOtp };
   },
 
+  /** Xác thực email khi OTP còn hạn và chưa sử dụng. */
   async verifyEmail(email: string, otpCode: string) {
     const otp = await authRepository.findValidOtp(email, otpCode, OtpType.VERIFY_EMAIL);
     if (!otp) throw new AppError("Invalid or expired OTP", 400);
@@ -52,6 +57,7 @@ export const authService = {
     return { message: "Email verified successfully" };
   },
 
+  /** Kiểm tra đăng nhập và cấp token nếu tài khoản đang hoạt động. */
   async login(input: LoginInput) {
     const user = await authRepository.findUserByEmail(input.email);
     if (!user || !(await comparePassword(input.password, user.passwordHash))) {
@@ -63,6 +69,7 @@ export const authService = {
     return tokens(user);
   },
 
+  /** Xác thực refresh token và cấp lại phiên mới. */
   async refresh(refreshToken: string) {
     let payload;
     try {
@@ -76,6 +83,7 @@ export const authService = {
     return tokens(user);
   },
 
+  /** Gửi OTP đặt lại mật khẩu nếu email tồn tại. */
   async forgotPassword(email: string) {
     if (await authRepository.findUserByEmail(email)) {
       const debugOtp = await issueOtp(email, OtpType.FORGOT_PASSWORD);
@@ -84,6 +92,7 @@ export const authService = {
     return { message: "Password reset OTP sent if the account exists" };
   },
 
+  /** Đặt lại mật khẩu sau khi OTP quên mật khẩu hợp lệ. */
   async resetPassword(email: string, otpCode: string, password: string) {
     const otp = await authRepository.findValidOtp(email, otpCode, OtpType.FORGOT_PASSWORD);
     if (!otp) throw new AppError("Invalid or expired OTP", 400);
@@ -92,6 +101,7 @@ export const authService = {
     return { message: "Password reset successfully" };
   },
 
+  /** Thu hồi refresh token hiện tại. */
   logout(refreshToken: string) {
     try {
       revokeRefreshToken(refreshToken);

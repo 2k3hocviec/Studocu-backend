@@ -8,6 +8,7 @@ import { AppError } from "../middlewares/errorHandler";
 const LOCAL_DOCUMENT_PREFIX = "local://documents/";
 const LOCAL_DOCUMENT_DIR = path.resolve(process.cwd(), "uploads", "documents");
 
+/** Suy ra extension file từ MIME type upload. */
 function extensionFromMime(mimetype: string) {
   if (mimetype === "application/pdf") return ".pdf";
   if (mimetype === "application/vnd.openxmlformats-officedocument.wordprocessingml.document") return ".docx";
@@ -15,11 +16,13 @@ function extensionFromMime(mimetype: string) {
   return "";
 }
 
+/** Tạo tên file local duy nhất cho tài liệu upload. */
 function localDocumentFileName(file: Express.Multer.File) {
   const extension = extensionFromMime(file.mimetype) || path.extname(file.originalname || "").toLowerCase();
   return `${Date.now()}-${randomUUID()}${extension}`;
 }
 
+/** Lưu file tài liệu vào local storage và trả URL nội bộ. */
 export async function uploadDocumentFile(file: Express.Multer.File): Promise<string> {
   await mkdir(LOCAL_DOCUMENT_DIR, { recursive: true });
   const filename = localDocumentFileName(file);
@@ -27,10 +30,12 @@ export async function uploadDocumentFile(file: Express.Multer.File): Promise<str
   return `${LOCAL_DOCUMENT_PREFIX}${encodeURIComponent(filename)}`;
 }
 
+/** Kiểm tra URL tài liệu có thuộc local storage hay không. */
 export function isLocalDocumentUrl(fileUrl: string) {
   return fileUrl.startsWith(LOCAL_DOCUMENT_PREFIX);
 }
 
+/** Tạo signed URL tạm thời để tải file raw riêng tư trên Cloudinary. */
 export function signedCloudinaryRawDownloadUrl(fileUrl: string) {
   if (!env.CLOUDINARY_URL) return null;
 
@@ -56,6 +61,7 @@ export function signedCloudinaryRawDownloadUrl(fileUrl: string) {
   }
 }
 
+/** Đọc file tài liệu từ local storage theo URL nội bộ. */
 export async function readLocalDocumentFile(fileUrl: string): Promise<Buffer> {
   if (!isLocalDocumentUrl(fileUrl)) {
     throw new AppError("Unsupported local document URL", 500);
@@ -73,6 +79,7 @@ export async function readLocalDocumentFile(fileUrl: string): Promise<Buffer> {
   }
 }
 
+/** Upload ảnh preview tài liệu lên Cloudinary. */
 export async function uploadDocumentPreviewImage(buffer: Buffer, publicId: string): Promise<string> {
   if (!env.CLOUDINARY_URL) {
     throw new AppError("CLOUDINARY_URL is required for preview uploads", 500);
@@ -99,6 +106,7 @@ export async function uploadDocumentPreviewImage(buffer: Buffer, publicId: strin
   });
 }
 
+/** Upload avatar PNG lên Cloudinary và crop theo khuôn mặt. */
 export async function uploadAvatarImage(file: Express.Multer.File, userId: number): Promise<string> {
   if (!env.CLOUDINARY_URL) {
     throw new AppError("CLOUDINARY_URL is required for avatar uploads", 500);

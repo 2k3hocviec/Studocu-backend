@@ -11,6 +11,7 @@ declare global {
   }
 }
 
+/** Đọc token nếu có, nhưng vẫn cho request đi tiếp khi không đăng nhập. */
 export const optionalAuth: RequestHandler = (req, _res, next) => {
   const header = req.headers.authorization;
   if (!header?.startsWith("Bearer ")) {
@@ -25,6 +26,7 @@ export const optionalAuth: RequestHandler = (req, _res, next) => {
   }
 };
 
+/** Bắt buộc request phải có access token hợp lệ. */
 export const authenticate: RequestHandler = (req, _res, next) => {
   optionalAuth(req, _res, (error?: unknown) => {
     if (error) {

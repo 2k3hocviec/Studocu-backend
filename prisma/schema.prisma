@@ -16,7 +16,6 @@ enum UserStatus {
 enum UserRole {
   USER
   ADMIN
-  MODERATOR
 }
 
 enum OtpType {

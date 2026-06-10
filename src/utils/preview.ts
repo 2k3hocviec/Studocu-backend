@@ -28,10 +28,12 @@ const OFFICE_CONVERT_TIMEOUT_MS = 180_000;
 const INVALID_DOCUMENT_MESSAGE = "File bị lỗi nên không upload lên được. Vui lòng kiểm tra lại file và thử file khác.";
 const OVERSIZED_DOCUMENT_MESSAGE = "File quá lớn hoặc quá phức tạp nên hệ thống không xử lý được. Vui lòng thử file khác hoặc giảm dung lượng file.";
 
+/** Tính số trang preview miễn phí dựa trên tổng số trang. */
 export function previewPageCount(totalPages: number) {
   return Math.min(MAX_PREVIEW_PAGES, Math.max(1, Math.ceil(totalPages * 0.3)));
 }
 
+/** Chọn lệnh Poppler phù hợp với hệ điều hành. */
 function popplerCommand() {
   const configured = env.PDFTOPPM_PATH || env.POPPLER_PATH;
   if (!configured) return "pdftoppm";
@@ -40,6 +42,7 @@ function popplerCommand() {
   return path.join(configured, process.platform === "win32" ? "pdftoppm.exe" : "pdftoppm");
 }
 
+/** Chuyển lỗi thiếu dependency thành AppError dễ hiểu. */
 function dependencyError(error: unknown, dependency: "LibreOffice" | "Poppler") {
   const message = error instanceof Error ? error.message : "Unknown error";
   const command = dependency === "LibreOffice" ? "soffice" : "pdftoppm/poppler-utils";
@@ -49,20 +52,24 @@ function dependencyError(error: unknown, dependency: "LibreOffice" | "Poppler") 
   return new AppError(`Preview generation failed: ${dependency} could not process the document. ${message}`, 500);
 }
 
+/** Tạo lỗi khi file không đọc/chuyển đổi được. */
 function invalidDocumentError() {
   return new AppError(INVALID_DOCUMENT_MESSAGE, 400);
 }
 
+/** Tạo lỗi khi file quá lớn hoặc xử lý quá lâu. */
 function oversizedDocumentError() {
   return new AppError(OVERSIZED_DOCUMENT_MESSAGE, 400);
 }
 
+/** Kiểm tra lỗi timeout từ tiến trình xử lý file. */
 function isTimeoutError(error: unknown) {
   const maybeError = error as NodeJS.ErrnoException & { killed?: boolean; signal?: string };
   const message = error instanceof Error ? error.message.toLowerCase() : "";
   return maybeError.code === "ETIMEDOUT" || maybeError.killed || maybeError.signal === "SIGTERM" || message.includes("timed out");
 }
 
+/** Kiểm tra nhanh file Office dạng zip hợp lệ. */
 function isZipOfficeFile(buffer: Buffer) {
   return buffer.length >= 4
     && buffer[0] === 0x50
@@ -74,6 +81,7 @@ function isZipOfficeFile(buffer: Buffer) {
     );
 }
 
+/** Validate buffer upload trước khi sinh preview. */
 function validateUploadBuffer(buffer: Buffer, fileType: PreviewFileType) {
   if (!buffer.length) {
     throw invalidDocumentError();
@@ -86,6 +94,7 @@ function validateUploadBuffer(buffer: Buffer, fileType: PreviewFileType) {
   }
 }
 
+/** Đếm số trang PDF bằng pdf.js. */
 async function pdfPageCount(pdfBuffer: Buffer) {
   try {
     const pdfjs = await import("pdfjs-dist/legacy/build/pdf.mjs");
@@ -101,6 +110,7 @@ async function pdfPageCount(pdfBuffer: Buffer) {
   }
 }
 
+/** Chuyển DOCX/PPTX sang PDF bằng LibreOffice. */
 async function convertOfficeToPdf(buffer: Buffer, fileType: Exclude<PreviewFileType, "PDF">) {
   const soffice = env.SOFFICE_PATH || "soffice";
   const workDir = await mkdtemp(path.join(tmpdir(), "studocu-preview-"));
@@ -129,6 +139,7 @@ async function convertOfficeToPdf(buffer: Buffer, fileType: Exclude<PreviewFileT
   }
 }
 
+/** Render các trang PDF đầu tiên thành ảnh preview. */
 async function renderPdfPreview(pdfBuffer: Buffer): Promise<GeneratedPreview> {
   const workDir = await mkdtemp(path.join(tmpdir(), "studocu-pdf-pages-"));
   const pdfPath = path.join(workDir, `input-${randomUUID()}.pdf`);
@@ -177,6 +188,7 @@ async function renderPdfPreview(pdfBuffer: Buffer): Promise<GeneratedPreview> {
   }
 }
 
+/** Sinh preview tài liệu từ file upload. */
 export async function generateDocumentPreview(file: PreviewInputFile, fileType: PreviewFileType) {
   validateUploadBuffer(file.buffer, fileType);
   const pdfBuffer = fileType === "PDF"

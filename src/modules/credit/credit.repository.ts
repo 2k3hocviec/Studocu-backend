@@ -3,7 +3,9 @@ import { pagination } from "../../utils/pagination";
 import { CreditTransactionType } from "@prisma/client";
 
 export const creditRepository = {
+  /** Lấy số dư credit của user. */
   balance: (userId: number) => prisma.user.findUnique({ where: { id: userId }, select: { creditBalance: true } }),
+  /** Lấy lịch sử giao dịch credit theo user và tài liệu nếu có. */
   transactions: (userId: number, page: number, limit: number, documentId?: number) => {
     const where = { userId, ...(documentId ? { documentId } : {}) };
     return Promise.all([
@@ -11,6 +13,7 @@ export const creditRepository = {
       prisma.creditTransaction.count({ where }),
     ]);
   },
+  /** Cập nhật số dư credit và ghi lại giao dịch điều chỉnh. */
   adminAdjust: (userId: number, amount: number) =>
     prisma.$transaction(async (tx) => {
       const user = await tx.user.update({ where: { id: userId }, data: { creditBalance: { increment: amount } }, select: { id: true, creditBalance: true } });

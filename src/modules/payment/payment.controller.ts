@@ -3,16 +3,20 @@ import { env } from "../../config/env";
 import { sendSuccess } from "../../utils/response";
 import { paymentService } from "./payment.service";
 
+/** Tạo thanh toán mới cho gói premium. */
 export const create: RequestHandler = async (req, res, next) => {
   try { sendSuccess(res, await paymentService.create(req.user!.userId, req.body.planId, req.body.method, req.ip), 201); } catch (error) { next(error); }
 };
+/** Xác nhận thanh toán giả lập cho môi trường dev. */
 export const mockConfirm: RequestHandler = async (req, res, next) => {
   try { sendSuccess(res, await paymentService.mockConfirm(req.user!.userId, Number(req.params.id))); } catch (error) { next(error); }
 };
+/** Lấy lịch sử thanh toán của user. */
 export const history: RequestHandler = async (req, res, next) => {
   try { sendSuccess(res, await paymentService.history(req.user!.userId, Number(req.query.page), Number(req.query.limit))); } catch (error) { next(error); }
 };
 
+/** Xử lý URL return từ VNPAY và chuyển hướng về frontend. */
 export const vnpayReturn: RequestHandler = async (req, res, next) => {
   try {
     const query = req.query as Record<string, unknown>;
@@ -27,6 +31,7 @@ export const vnpayReturn: RequestHandler = async (req, res, next) => {
   }
 };
 
+/** Xử lý IPN callback từ VNPAY. */
 export const vnpayIpn: RequestHandler = async (req, res) => {
   try {
     const query = req.query as Record<string, unknown>;

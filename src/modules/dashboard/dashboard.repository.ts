@@ -2,6 +2,7 @@ import { prisma } from "../../database/prisma";
 import { DocumentStatus, PaymentStatus } from "@prisma/client";
 
 export const dashboardRepository = {
+  /** Đếm các chỉ số tổng quan toàn hệ thống. */
   getOverviewStats: async () => {
     const [userCount, documentCount, downloadCount, revenueResult] = await Promise.all([
       prisma.user.count({ where: { deletedAt: null } }),
@@ -21,8 +22,9 @@ export const dashboardRepository = {
     };
   },
 
+  /** Lấy dữ liệu thống kê theo ngày trong khoảng lọc. */
   getTimeSeriesStats: async (startDate: Date, endDate: Date) => {
-    // Truy vấn dữ liệu đăng ký user theo ngày
+    // Thống kê user đăng ký theo ngày.
     const usersByDay = await prisma.$queryRaw<Array<{ date: Date; count: number }>>`
       SELECT DATE_TRUNC('day', created_at) AS date, COUNT(*)::int AS count 
       FROM users 
@@ -31,7 +33,7 @@ export const dashboardRepository = {
       ORDER BY date ASC
     `;
 
-    // Truy vấn số tài liệu được approved theo ngày
+    // Thống kê tài liệu được duyệt theo ngày.
     const documentsByDay = await prisma.$queryRaw<Array<{ date: Date; count: number }>>`
       SELECT DATE_TRUNC('day', approved_at) AS date, COUNT(*)::int AS count 
       FROM documents 
@@ -40,7 +42,7 @@ export const dashboardRepository = {
       ORDER BY date ASC
     `;
 
-    // Truy vấn số lượt download theo ngày
+    // Thống kê lượt tải theo ngày.
     const downloadsByDay = await prisma.$queryRaw<Array<{ date: Date; count: number }>>`
       SELECT DATE_TRUNC('day', downloaded_at) AS date, COUNT(*)::int AS count 
       FROM downloads 
@@ -49,7 +51,7 @@ export const dashboardRepository = {
       ORDER BY date ASC
     `;
 
-    // Truy vấn doanh thu theo ngày
+    // Thống kê doanh thu theo ngày.
     const revenueByDay = await prisma.$queryRaw<Array<{ date: Date; revenue: number }>>`
       SELECT DATE_TRUNC('day', paid_at) AS date, SUM(amount)::float AS revenue 
       FROM payments 
@@ -66,6 +68,7 @@ export const dashboardRepository = {
     };
   },
 
+  /** Lấy top tài liệu và trường học nổi bật. */
   getTopCharts: async () => {
     const [topDocuments, topSchools] = await Promise.all([
       prisma.document.findMany({

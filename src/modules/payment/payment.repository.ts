@@ -8,12 +8,18 @@ const paymentInclude = {
 };
 
 export const paymentRepository = {
+  /** Tìm gói subscription đang active. */
   findPlan: (id: number) => prisma.subscriptionPlan.findFirst({ where: { id, isActive: true } }),
+  /** Tạo bản ghi thanh toán mới. */
   create: (userId: number, planId: number, amount: number, method: PaymentMethod) =>
     prisma.payment.create({ data: { userId, planId, amount, method }, include: { plan: true } }),
+  /** Tìm thanh toán thuộc về user. */
   findOwned: (id: number, userId: number) => prisma.payment.findFirst({ where: { id, userId }, include: paymentInclude }),
+  /** Tìm thanh toán theo id. */
   findById: (id: number) => prisma.payment.findUnique({ where: { id }, include: paymentInclude }),
+  /** Đánh dấu thanh toán thất bại. */
   fail: (id: number) => prisma.payment.update({ where: { id }, data: { status: PaymentStatus.FAILED } }),
+  /** Xác nhận thanh toán và tạo/gia hạn subscription trong transaction. */
   confirmAndSubscribe: (id: number, userId: number, planId: number, durationDays: number) => {
     const paidAt = new Date();
     return prisma.$transaction(async (tx) => {
@@ -52,6 +58,7 @@ export const paymentRepository = {
       return { payment, subscription, newlyPaid: true };
     });
   },
+  /** Lấy lịch sử thanh toán của user. */
   history: (userId: number, page: number, limit: number) =>
     Promise.all([
       prisma.payment.findMany({ where: { userId }, ...pagination(page, limit), orderBy: { createdAt: "desc" }, include: { plan: true } }),

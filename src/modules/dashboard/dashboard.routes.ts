@@ -6,6 +6,6 @@ import * as controller from "./dashboard.controller";
 
 const router = Router();
 
-router.get("/stats", authenticate, allowRoles(UserRole.ADMIN, UserRole.MODERATOR), controller.getStats);
+router.get("/stats", authenticate, allowRoles(UserRole.ADMIN), controller.getStats);
 
 export default router;

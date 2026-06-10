@@ -3,6 +3,7 @@ import multer from "multer";
 import { ZodError } from "zod";
 import { sendError } from "../utils/response";
 
+/** Lỗi chủ động có HTTP status code rõ ràng. */
 export class AppError extends Error {
   constructor(
     message: string,
@@ -13,6 +14,7 @@ export class AppError extends Error {
   }
 }
 
+/** Chuẩn hóa mọi lỗi thành response JSON. */
 export const errorHandler: ErrorRequestHandler = (error, _req, res, _next) => {
   if (error instanceof AppError) {
     sendError(res, error.message, error.statusCode);

@@ -130,12 +130,6 @@ async function seedUsers() {
       creditBalance: 100,
     },
     {
-      email: "moderator@hoclieu.local",
-      fullName: "Kiem duyet vien",
-      role: UserRole.MODERATOR,
-      creditBalance: 50,
-    },
-    {
       email: "student@hoclieu.local",
       fullName: "Nguyen Van An",
       role: UserRole.USER,
@@ -646,7 +640,6 @@ async function main() {
 
   console.log("Seed completed.");
   console.log(`Admin: admin@hoclieu.local / ${demoPassword}`);
-  console.log(`Moderator: moderator@hoclieu.local / ${demoPassword}`);
   console.log(`User: student@hoclieu.local / ${demoPassword}`);
   console.log(`Premium user: premium@hoclieu.local / ${demoPassword}`);
   console.log(`Credit user: credituser@hoclieu.local / ${demoPassword}`);

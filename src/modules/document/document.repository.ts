@@ -32,6 +32,7 @@ const detailInclude = {
   previews: { orderBy: { pageNumber: "asc" as const } },
 };
 
+/** Tạo slug URL an toàn từ tên trường hoặc môn học. */
 function slugify(value: string) {
   const slug = value
     .normalize("NFD")
@@ -44,6 +45,7 @@ function slugify(value: string) {
   return slug || "item";
 }
 
+/** Tạo slug duy nhất trong bảng school hoặc subject. */
 async function uniqueSlug(
   tx: Prisma.TransactionClient,
   model: "school" | "subject",
@@ -64,6 +66,7 @@ async function uniqueSlug(
   return `${base}-${Date.now()}`;
 }
 
+/** Tìm hoặc tạo trường học theo tên người dùng nhập. */
 async function findOrCreateSchool(tx: Prisma.TransactionClient, name: string) {
   const existing = await tx.school.findFirst({
     where: { deletedAt: null, name: { equals: name, mode: "insensitive" } },
@@ -78,6 +81,7 @@ async function findOrCreateSchool(tx: Prisma.TransactionClient, name: string) {
   return school.id;
 }
 
+/** Tìm hoặc tạo môn học trong một trường. */
 async function findOrCreateSubject(tx: Prisma.TransactionClient, schoolId: number, name: string) {
   const existing = await tx.subject.findFirst({
     where: { deletedAt: null, schoolId, name: { equals: name, mode: "insensitive" } },
@@ -93,7 +97,21 @@ async function findOrCreateSubject(tx: Prisma.TransactionClient, schoolId: numbe
 }
 
 export const documentRepository = {
-  list: (page: number, limit: number, filters: { schoolId?: number, subjectId?: number, type?: DocumentType, search?: string, schoolName?: string, subjectName?: string, status?: DocumentStatus, isAdmin?: boolean }) => {
+  /** Lấy danh sách tài liệu theo bộ lọc và quyền admin/public. */
+  list: (
+    page: number,
+    limit: number,
+    filters: {
+      schoolId?: number;
+      subjectId?: number;
+      type?: DocumentType;
+      search?: string;
+      schoolName?: string;
+      subjectName?: string;
+      status?: DocumentStatus;
+      isAdmin?: boolean;
+    },
+  ) => {
     const where: Prisma.DocumentWhereInput = {
       deletedAt: null,
     };
@@ -123,7 +141,12 @@ export const documentRepository = {
       };
     }
     if (filters.type) where.documentType = filters.type;
-    if (filters.search) where.OR = [{ title: { contains: filters.search, mode: "insensitive" } }, { description: { contains: filters.search, mode: "insensitive" } }];
+    if (filters.search) {
+      where.OR = [
+        { title: { contains: filters.search, mode: "insensitive" } },
+        { description: { contains: filters.search, mode: "insensitive" } },
+      ];
+    }
     return Promise.all([
       prisma.document.findMany({
         where,
@@ -144,19 +167,24 @@ export const documentRepository = {
       prisma.document.count({ where }),
     ]);
   },
+  /** Tìm chi tiết tài liệu kèm uploader, file và preview. */
   findDetail: (id: number) => prisma.document.findFirst({ where: { id, deletedAt: null }, include: detailInclude }),
+  /** Tìm subscription còn hiệu lực của user. */
   activeSubscription: (userId: number) =>
     prisma.subscription.findFirst({
       where: { userId, status: SubscriptionStatus.ACTIVE, endDate: { gt: new Date() } },
       select: { id: true },
     }),
+  /** Lấy số dư credit của user. */
   userCreditBalance: (userId: number) =>
     prisma.user.findUnique({ where: { id: userId }, select: { creditBalance: true } }),
+  /** Kiểm tra user đã mở khóa tài liệu bằng credit chưa. */
   creditUnlock: (userId: number, documentId: number) =>
     prisma.creditTransaction.findFirst({
       where: { userId, documentId, type: CREDIT_UNLOCK_TYPE },
       select: { id: true },
     }),
+  /** Trừ credit và ghi giao dịch mở khóa tài liệu. */
   unlockWithCredit: (userId: number, documentId: number, amount: number) =>
     prisma.$transaction(async (tx) => {
       const existingUnlock = await tx.creditTransaction.findFirst({
@@ -180,29 +208,36 @@ export const documentRepository = {
       const user = await tx.user.findUnique({ where: { id: userId }, select: { creditBalance: true } });
       return { charged: true, creditBalance: user?.creditBalance ?? 0 };
     }),
+  /** Đếm số like/dislike của tài liệu. */
   reactionCounts: (documentId: number) =>
     prisma.documentReaction.groupBy({
       by: ["type"],
       where: { documentId },
       _count: { type: true },
     }),
+  /** Tìm reaction hiện tại của user với tài liệu. */
   findReaction: (documentId: number, userId: number) =>
     prisma.documentReaction.findUnique({ where: { userId_documentId: { userId, documentId } } }),
+  /** Tạo hoặc cập nhật reaction của user. */
   setReaction: (documentId: number, userId: number, type: ReactionType) =>
     prisma.documentReaction.upsert({
       where: { userId_documentId: { userId, documentId } },
       update: { type },
       create: { userId, documentId, type },
     }),
+  /** Xóa reaction của user. */
   removeReaction: (documentId: number, userId: number) =>
     prisma.documentReaction.deleteMany({ where: { userId, documentId } }),
+  /** Tăng bộ đếm lượt xem tài liệu. */
   incrementView: (id: number) => prisma.document.update({ where: { id }, data: { viewCount: { increment: 1 } } }),
+  /** Ghi nhận lần xem gần nhất của user với tài liệu. */
   recordUserView: (documentId: number, userId: number) =>
     prisma.documentView.upsert({
       where: { userId_documentId: { userId, documentId } },
       update: { viewedAt: new Date() },
       create: { userId, documentId },
     }),
+  /** Tạo tài liệu, file và các trang preview trong transaction. */
   create: (data: NewDocumentData) =>
     prisma.document.create({
       data: {
@@ -214,9 +249,12 @@ export const documentRepository = {
       },
       include: detailInclude,
     }),
+  /** Cập nhật metadata tài liệu. */
   update: (id: number, data: Prisma.DocumentUpdateInput) => prisma.document.update({ where: { id }, data, include: detailInclude }),
+  /** Xóa mềm tài liệu. */
   remove: (id: number) => prisma.document.update({ where: { id }, data: { deletedAt: new Date() } }),
-  approveWithReward: (id: number, moderatorId: number, uploaderId: number, reward: boolean) =>
+  /** Duyệt tài liệu và cộng credit thưởng nếu cần. */
+  approveWithReward: (id: number, adminId: number, uploaderId: number, reward: boolean) =>
     prisma.$transaction(async (tx) => {
       const current = await tx.document.findUnique({
         where: { id },
@@ -238,7 +276,7 @@ export const documentRepository = {
 
       const document = await tx.document.update({
         where: { id },
-        data: { schoolId, subjectId, status: DocumentStatus.APPROVED, approvedBy: moderatorId, approvedAt: new Date(), rejectReason: null },
+        data: { schoolId, subjectId, status: DocumentStatus.APPROVED, approvedBy: adminId, approvedAt: new Date(), rejectReason: null },
         include: detailInclude,
       });
       if (reward && !document.creditEarned) {
@@ -252,24 +290,28 @@ export const documentRepository = {
       }
       return document;
     }),
-  reject: (id: number, moderatorId: number, reason: string) =>
+  /** Từ chối tài liệu và lưu lý do. */
+  reject: (id: number, adminId: number, reason: string) =>
     prisma.document.update({
       where: { id },
-      data: { status: DocumentStatus.REJECTED, approvedBy: moderatorId, approvedAt: new Date(), rejectReason: reason },
+      data: { status: DocumentStatus.REJECTED, approvedBy: adminId, approvedAt: new Date(), rejectReason: reason },
       include: detailInclude,
     }),
-  hide: (id: number, moderatorId: number) =>
+  /** Ẩn tài liệu khỏi khu vực công khai. */
+  hide: (id: number, adminId: number) =>
     prisma.document.update({
       where: { id },
-      data: { status: DocumentStatus.HIDDEN, approvedBy: moderatorId, approvedAt: new Date() },
+      data: { status: DocumentStatus.HIDDEN, approvedBy: adminId, approvedAt: new Date() },
       include: detailInclude,
     }),
-  unhide: (id: number, moderatorId: number) =>
+  /** Khôi phục tài liệu đang bị ẩn. */
+  unhide: (id: number, adminId: number) =>
     prisma.document.update({
       where: { id },
-      data: { status: DocumentStatus.APPROVED, approvedBy: moderatorId, approvedAt: new Date() },
+      data: { status: DocumentStatus.APPROVED, approvedBy: adminId, approvedAt: new Date() },
       include: detailInclude,
     }),
+  /** Ghi nhận lượt tải duy nhất của user với tài liệu. */
   recordDownload: (documentId: number, userId: number) =>
     prisma.download.upsert({
       where: { userId_documentId: { userId, documentId } },
@@ -279,5 +321,6 @@ export const documentRepository = {
         documentId,
       },
     }),
+  /** Tăng bộ đếm lượt tải tài liệu. */
   incrementDownload: (id: number) => prisma.document.update({ where: { id }, data: { downloadCount: { increment: 1 } } }),
 };

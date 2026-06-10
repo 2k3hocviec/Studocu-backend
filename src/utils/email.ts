@@ -10,10 +10,12 @@ type MailOptions = {
   failWhenUnconfigured?: boolean;
 };
 
+/** Kiểm tra hệ thống đã có cấu hình gửi email hay chưa. */
 function isEmailConfigured() {
   return Boolean(env.RESEND_API_KEY || (env.SMTP_HOST && env.SMTP_USER && env.SMTP_PASS));
 }
 
+/** Gửi email qua Resend API nếu được cấu hình. */
 async function sendMailWithResend({ to, subject, text }: MailOptions): Promise<void> {
   if (!env.RESEND_API_KEY) return;
 
@@ -37,6 +39,7 @@ async function sendMailWithResend({ to, subject, text }: MailOptions): Promise<v
   }
 }
 
+/** Gửi email qua Resend hoặc SMTP tùy cấu hình môi trường. */
 async function sendMail({
   to,
   subject,
@@ -76,6 +79,7 @@ async function sendMail({
   });
 }
 
+/** Gửi email thông báo nhưng không làm hỏng luồng chính nếu thất bại. */
 async function sendNotificationEmail(options: MailOptions) {
   if (!isEmailConfigured()) return;
   try {
@@ -85,6 +89,7 @@ async function sendNotificationEmail(options: MailOptions) {
   }
 }
 
+/** Gửi email OTP cho xác thực email hoặc quên mật khẩu. */
 export async function sendOtpEmail(
   email: string,
   otpCode: string,
@@ -98,6 +103,7 @@ export async function sendOtpEmail(
   });
 }
 
+/** Gửi email thông báo thanh toán Premium thành công. */
 export async function sendPremiumPaymentSuccessEmail(data: {
   email: string;
   fullName?: string | null;
@@ -124,6 +130,7 @@ export async function sendPremiumPaymentSuccessEmail(data: {
   });
 }
 
+/** Gửi email thông báo tài liệu đã được duyệt. */
 export async function sendDocumentApprovedEmail(data: {
   email: string;
   fullName?: string | null;

@@ -3,6 +3,7 @@ import { ZodType } from "zod";
 
 type Target = "body" | "query" | "params";
 
+/** Validate body/query/params bằng Zod rồi gán dữ liệu đã parse vào request. */
 export function validate(schema: ZodType, target: Target = "body"): RequestHandler {
   return (req, _res, next) => {
     try {

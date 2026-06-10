@@ -6,16 +6,19 @@ import { paginated } from "../../utils/pagination";
 import { paymentRepository } from "./payment.repository";
 import { buildVnpayUrl, verifyVnpay } from "../../utils/vnpay";
 
+/** Format ngày theo chuẩn VNPAY yyyyMMddHHmmss ở múi giờ Việt Nam. */
 function formatVnpayDate(date: Date) {
   const vietnamTime = new Date(date.getTime() + 7 * 60 * 60 * 1000);
   return vietnamTime.toISOString().replace(/\D/g, "").slice(0, 14);
 }
 
+/** Chuẩn hóa IP client trước khi gửi sang VNPAY. */
 function normalizeIp(ip?: string) {
   if (!ip || ip === "::1") return "127.0.0.1";
   return ip.startsWith("::ffff:") ? ip.slice(7) : ip;
 }
 
+/** Gửi email thông báo khi thanh toán premium lần đầu thành công. */
 async function notifyPremiumSuccess(result: Awaited<ReturnType<typeof paymentRepository.confirmAndSubscribe>>) {
   if (!result.newlyPaid || !result.subscription) return;
 
@@ -28,6 +31,7 @@ async function notifyPremiumSuccess(result: Awaited<ReturnType<typeof paymentRep
 }
 
 export const paymentService = {
+  /** Tạo bản ghi thanh toán và URL VNPAY nếu chọn VNPAY. */
   async create(userId: number, planId: number, method: PaymentMethod, clientIp?: string) {
     const plan = await paymentRepository.findPlan(planId);
     if (!plan) throw new AppError("Subscription plan not found", 404);
@@ -59,6 +63,7 @@ export const paymentService = {
 
     return { ...payment, paymentUrl };
   },
+  /** Xác nhận thanh toán thủ công trong môi trường không production. */
   async mockConfirm(userId: number, paymentId: number) {
     if (env.NODE_ENV === "production") throw new AppError("Mock payments are disabled in production", 403);
     const payment = await paymentRepository.findOwned(paymentId, userId);
@@ -68,11 +73,13 @@ export const paymentService = {
     await notifyPremiumSuccess(result);
     return result;
   },
+  /** Lấy lịch sử thanh toán có phân trang. */
   async history(userId: number, page: number, limit: number) {
     const [items, total] = await paymentRepository.history(userId, page, limit);
     return paginated(items, total, page, limit);
   },
 
+  /** Xác minh kết quả return từ VNPAY và cập nhật subscription. */
   async vnpayReturn(paymentId: number, query: { vnp_ResponseCode: string; vnp_SecureHash: string } & Record<string, string>) {
     if (!env.VNPAY_HASH_SECRET) throw new AppError("VNPAY is not configured", 500);
 
@@ -101,6 +108,7 @@ export const paymentService = {
     return { success: true, paymentId: payment.id };
   },
 
+  /** Xác minh IPN từ VNPAY và cập nhật thanh toán idempotent. */
   async vnpayIpn(paymentId: number, query: { vnp_ResponseCode: string; vnp_SecureHash: string } & Record<string, string>) {
     if (!env.VNPAY_HASH_SECRET) throw new AppError("VNPAY is not configured", 500);
 

@@ -10,19 +10,22 @@ import { documentRepository, NewDocumentData } from "./document.repository";
 type Actor = { userId: number; role: UserRole } | undefined;
 const DOCUMENT_UNLOCK_CREDIT_COST = 1;
 
-function isModerator(actor: Actor) {
-  return actor?.role === UserRole.ADMIN || actor?.role === UserRole.MODERATOR;
+/** Kiểm tra actor có quyền kiểm duyệt hay không. */
+function isAdmin(actor: Actor) {
+  return actor?.role === UserRole.ADMIN;
 }
 
+/** Tính số trang preview được phép xem miễn phí. */
 function previewPageLimit(totalPages?: number | null, previewCount = 0) {
   const pageCount = totalPages || previewCount;
   if (!pageCount) return 0;
   return previewPageCount(pageCount);
 }
 
+/** Tính quyền truy cập và trạng thái mở khóa tài liệu của actor. */
 async function accessInfo(document: Awaited<ReturnType<typeof documentRepository.findDetail>>, actor: Actor) {
   const owner = Boolean(document && actor?.userId === document.uploaderId);
-  const moderator = isModerator(actor);
+  const admin = isAdmin(actor);
   if (!document || !actor?.userId) {
     return {
       canViewFull: false,
@@ -36,24 +39,25 @@ async function accessInfo(document: Awaited<ReturnType<typeof documentRepository
   }
 
   const [subscription, credit, existingCreditUnlock] = await Promise.all([
-    owner || moderator ? Promise.resolve(null) : documentRepository.activeSubscription(actor.userId),
+    owner || admin ? Promise.resolve(null) : documentRepository.activeSubscription(actor.userId),
     documentRepository.userCreditBalance(actor.userId),
-    owner || moderator ? Promise.resolve(null) : documentRepository.creditUnlock(actor.userId, document.id),
+    owner || admin ? Promise.resolve(null) : documentRepository.creditUnlock(actor.userId, document.id),
   ]);
   let creditBalance = credit?.creditBalance ?? 0;
   let hasCreditAccess = Boolean(existingCreditUnlock);
 
   return {
-    canViewFull: owner || moderator || Boolean(subscription) || hasCreditAccess,
+    canViewFull: owner || admin || Boolean(subscription) || hasCreditAccess,
     isOwner: owner,
     hasPremium: Boolean(subscription),
     hasCreditAccess,
     creditBalance,
     creditCost: DOCUMENT_UNLOCK_CREDIT_COST,
-    canUnlockWithCredits: !owner && !moderator && !subscription && !hasCreditAccess && creditBalance >= DOCUMENT_UNLOCK_CREDIT_COST,
+    canUnlockWithCredits: !owner && !admin && !subscription && !hasCreditAccess && creditBalance >= DOCUMENT_UNLOCK_CREDIT_COST,
   };
 }
 
+/** Chuyển loại file nội bộ thành content type HTTP. */
 function fileContentType(fileType: string) {
   switch (fileType) {
     case "PDF":
@@ -67,6 +71,7 @@ function fileContentType(fileType: string) {
   }
 }
 
+/** Chọn tên file tải về từ metadata tài liệu. */
 function fileName(document: NonNullable<Awaited<ReturnType<typeof documentRepository.findDetail>>>) {
   const original = document.documentFile?.originalFilename?.trim();
   if (original) return original;
@@ -74,17 +79,20 @@ function fileName(document: NonNullable<Awaited<ReturnType<typeof documentReposi
   return `${document.title}.${fallbackExtension}`.replace(/[\\/:*?"<>|]+/g, "-");
 }
 
+/** Tạo URL thumbnail tối ưu nếu ảnh nằm trên Cloudinary. */
 function thumbnailUrl(imageUrl?: string | null) {
   if (!imageUrl) return null;
   if (!imageUrl.includes("/upload/")) return imageUrl;
   return imageUrl.replace("/upload/", "/upload/f_auto,q_auto,w_480/");
 }
 
+/** Chuẩn hóa tên trường/môn tự nhập. */
 function normalizeName(value?: string | null) {
   const normalized = value?.trim();
   return normalized || null;
 }
 
+/** Chuẩn hóa payload chi tiết tài liệu theo quyền xem. */
 async function documentDetailPayload(
   document: NonNullable<Awaited<ReturnType<typeof documentRepository.findDetail>>>,
   actor: Actor,
@@ -119,8 +127,22 @@ async function documentDetailPayload(
 }
 
 export const documentService = {
-  async list(page: number, limit: number, filters: { schoolId?: number; subjectId?: number; type?: NewDocumentData["documentType"]; search?: string; schoolName?: string; subjectName?: string; status?: DocumentStatus }, actor?: Actor) {
-    const isAdmin = actor?.role === UserRole.ADMIN || actor?.role === UserRole.MODERATOR;
+  /** Lấy danh sách tài liệu và rút gọn metadata cho card/list. */
+  async list(
+    page: number,
+    limit: number,
+    filters: {
+      schoolId?: number;
+      subjectId?: number;
+      type?: NewDocumentData["documentType"];
+      search?: string;
+      schoolName?: string;
+      subjectName?: string;
+      status?: DocumentStatus;
+    },
+    actor?: Actor,
+  ) {
+    const isAdminActor = actor?.role === UserRole.ADMIN;
     const [items, total] = await documentRepository.list(page, limit, {
       schoolId: filters.schoolId,
       subjectId: filters.subjectId,
@@ -129,22 +151,28 @@ export const documentService = {
       schoolName: filters.schoolName,
       subjectName: filters.subjectName,
       status: filters.status,
-      isAdmin,
+      isAdmin: isAdminActor,
     });
-    return paginated(items.map((item) => ({
-      ...item,
-      coverImageUrl: thumbnailUrl(item.previews[0]?.imageUrl),
-      totalPages: item.documentFile?.totalPages ?? null,
-      documentFile: undefined,
-      previews: undefined,
-    })), total, page, limit);
+    return paginated(
+      items.map((item) => ({
+        ...item,
+        coverImageUrl: thumbnailUrl(item.previews[0]?.imageUrl),
+        totalPages: item.documentFile?.totalPages ?? null,
+        documentFile: undefined,
+        previews: undefined,
+      })),
+      total,
+      page,
+      limit,
+    );
   },
 
+  /** Lấy chi tiết tài liệu và ghi nhận lượt xem. */
   async detail(id: number, actor: Actor, previewOnly = false) {
     const document = await documentRepository.findDetail(id);
     if (!document) throw new AppError("Document not found", 404);
     const owner = actor?.userId === document.uploaderId;
-    if (document.status !== DocumentStatus.APPROVED && !owner && !isModerator(actor)) {
+    if (document.status !== DocumentStatus.APPROVED && !owner && !isAdmin(actor)) {
       throw new AppError("Document not found", 404);
     }
     await documentRepository.incrementView(id);
@@ -155,13 +183,14 @@ export const documentService = {
     return documentDetailPayload(document, actor, previewOnly);
   },
 
+  /** Kiểm tra quyền và trả thông tin file được bảo vệ. */
   async protectedFile(documentId: number, actor: Actor, download = false) {
     if (!actor?.userId) throw new AppError("Must be logged in", 401);
 
     const document = await documentRepository.findDetail(documentId);
     if (!document) throw new AppError("Document not found", 404);
     const owner = actor.userId === document.uploaderId;
-    if (document.status !== DocumentStatus.APPROVED && !owner && !isModerator(actor)) {
+    if (document.status !== DocumentStatus.APPROVED && !owner && !isAdmin(actor)) {
       throw new AppError("Document not found", 404);
     }
     if (!document.documentFile?.fileUrl) throw new AppError("Document file not found", 404);
@@ -177,6 +206,7 @@ export const documentService = {
     };
   },
 
+  /** Tạo tài liệu mới, upload file và sinh preview nếu có file đính kèm. */
   async create(input: Omit<NewDocumentData, "uploaderId" | "file"> & NewDocumentData["file"], uploaderId: number, uploaded?: Express.Multer.File) {
     const requestedSchoolName = normalizeName(input.requestedSchoolName);
     const requestedSubjectName = normalizeName(input.requestedSubjectName);
@@ -228,12 +258,13 @@ export const documentService = {
     });
   },
 
+  /** Cập nhật reaction của user với tài liệu. */
   async react(documentId: number, actor: Actor, type: ReactionType | null) {
     if (!actor?.userId) throw new AppError("Must be logged in", 401);
 
     const document = await documentRepository.findDetail(documentId);
     if (!document) throw new AppError("Document not found", 404);
-    if (document.status !== DocumentStatus.APPROVED && actor.userId !== document.uploaderId && !isModerator(actor)) {
+    if (document.status !== DocumentStatus.APPROVED && actor.userId !== document.uploaderId && !isAdmin(actor)) {
       throw new AppError("Document not found", 404);
     }
     if (!(await accessInfo(document, actor)).canViewFull) {
@@ -254,6 +285,7 @@ export const documentService = {
     };
   },
 
+  /** Cho phép chủ sở hữu cập nhật metadata tài liệu. */
   async update(id: number, userId: number, data: Record<string, unknown>) {
     const document = await documentRepository.findDetail(id);
     if (!document) throw new AppError("Document not found", 404);
@@ -261,13 +293,14 @@ export const documentService = {
     return documentRepository.update(id, data);
   },
 
+  /** Mở khóa tài liệu bằng credit trong tài khoản user. */
   async unlockWithCredit(documentId: number, actor: Actor) {
     if (!actor?.userId) throw new AppError("Must be logged in", 401);
 
     const document = await documentRepository.findDetail(documentId);
     if (!document) throw new AppError("Document not found", 404);
     const owner = actor.userId === document.uploaderId;
-    if (document.status !== DocumentStatus.APPROVED && !owner && !isModerator(actor)) {
+    if (document.status !== DocumentStatus.APPROVED && !owner && !isAdmin(actor)) {
       throw new AppError("Document not available", 403);
     }
 
@@ -303,18 +336,20 @@ export const documentService = {
     };
   },
 
+  /** Xóa mềm tài liệu nếu user là chủ sở hữu hoặc admin. */
   async remove(id: number, userId: number, role: UserRole) {
     const document = await documentRepository.findDetail(id);
     if (!document) throw new AppError("Document not found", 404);
-    const isAdmin = role === UserRole.ADMIN || role === UserRole.MODERATOR;
-    if (!isAdmin && document.uploaderId !== userId) {
+    const isAdminActor = role === UserRole.ADMIN;
+    if (!isAdminActor && document.uploaderId !== userId) {
       throw new AppError("You can only delete your own document", 403);
     }
     await documentRepository.remove(id);
     return { message: "Document deleted" };
   },
 
-  async approve(id: number, moderatorId: number) {
+  /** Duyệt tài liệu và cộng thưởng credit nếu đủ điều kiện. */
+  async approve(id: number, adminId: number) {
     const document = await documentRepository.findDetail(id);
     if (!document) throw new AppError("Document not found", 404);
     if (!document.schoolId && !normalizeName(document.requestedSchoolName)) {
@@ -324,7 +359,7 @@ export const documentService = {
       throw new AppError("Không thể duyệt vì tài liệu chưa có môn học.", 400);
     }
     const shouldNotify = document.status !== DocumentStatus.APPROVED;
-    const approvedDocument = await documentRepository.approveWithReward(id, moderatorId, document.uploaderId, shouldNotify);
+    const approvedDocument = await documentRepository.approveWithReward(id, adminId, document.uploaderId, shouldNotify);
     if (shouldNotify) {
       await sendDocumentApprovedEmail({
         email: approvedDocument.uploader.email,
@@ -335,25 +370,29 @@ export const documentService = {
     return approvedDocument;
   },
 
-  async reject(id: number, moderatorId: number, reason: string) {
+  /** Từ chối tài liệu và lưu lý do. */
+  async reject(id: number, adminId: number, reason: string) {
     if (!(await documentRepository.findDetail(id))) throw new AppError("Document not found", 404);
-    return documentRepository.reject(id, moderatorId, reason);
+    return documentRepository.reject(id, adminId, reason);
   },
-  async hide(id: number, moderatorId: number) {
+  /** Ẩn tài liệu đã duyệt khỏi danh sách công khai. */
+  async hide(id: number, adminId: number) {
     if (!(await documentRepository.findDetail(id))) throw new AppError("Document not found", 404);
-    return documentRepository.hide(id, moderatorId);
+    return documentRepository.hide(id, adminId);
   },
-  async unhide(id: number, moderatorId: number) {
+  /** Bỏ ẩn tài liệu để hiển thị công khai trở lại. */
+  async unhide(id: number, adminId: number) {
     if (!(await documentRepository.findDetail(id))) throw new AppError("Document not found", 404);
-    return documentRepository.unhide(id, moderatorId);
+    return documentRepository.unhide(id, adminId);
   },
 
+  /** Ghi nhận lượt tải sau khi kiểm tra quyền truy cập. */
   async recordDownload(documentId: number, actor: Actor) {
     if (!actor?.userId) throw new AppError("Must be logged in", 401);
 
     const document = await documentRepository.findDetail(documentId);
     if (!document) throw new AppError("Document not found", 404);
-    if (document.status !== DocumentStatus.APPROVED && actor.userId !== document.uploaderId && !isModerator(actor)) {
+    if (document.status !== DocumentStatus.APPROVED && actor.userId !== document.uploaderId && !isAdmin(actor)) {
       throw new AppError("Document not available", 403);
     }
     if (!(await accessInfo(document, actor)).canViewFull) {
