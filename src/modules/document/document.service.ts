@@ -234,7 +234,8 @@ export const documentService = {
           pageNumber: page.pageNumber,
           imageUrl: await uploadDocumentPreviewImage(
             page.image,
-            `academic-document-previews/${previewBatchId}/page-${page.pageNumber}`,
+            previewBatchId,
+            page.pageNumber
           ),
           isBlurred: false,
         })))

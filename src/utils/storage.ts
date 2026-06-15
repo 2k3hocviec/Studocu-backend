@@ -78,7 +78,7 @@ export function signedCloudinaryRawDownloadUrl(fileUrl: string) {
 
 
 /** Upload ảnh preview tài liệu lên Cloudinary. */
-export async function uploadDocumentPreviewImage(buffer: Buffer, publicId: string): Promise<string> {
+export async function uploadDocumentPreviewImage(buffer: Buffer, batchId: string, pageNumber: number): Promise<string> {
   if (!env.CLOUDINARY_URL) {
     throw new AppError("CLOUDINARY_URL is required for preview uploads", 500);
   }
@@ -87,7 +87,8 @@ export async function uploadDocumentPreviewImage(buffer: Buffer, publicId: strin
     const upload = cloudinary.uploader.upload_stream(
       {
         resource_type: "image",
-        public_id: publicId,
+        folder: `academic-document-previews/${batchId}`,
+        public_id: `page-${pageNumber}`,
         format: "png",
         overwrite: true,
       },
@@ -117,7 +118,8 @@ export async function uploadAvatarImage(file: Express.Multer.File, userId: numbe
     const upload = cloudinary.uploader.upload_stream(
       {
         resource_type: "image",
-        public_id: `user-avatars/${userId}-${Date.now()}`,
+        folder: "user-avatars",
+        public_id: `${userId}-${Date.now()}`,
         format: "png",
         overwrite: true,
         transformation: [{ width: 512, height: 512, crop: "fill", gravity: "face" }],
