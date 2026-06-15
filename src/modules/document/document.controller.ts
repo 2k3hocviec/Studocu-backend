@@ -1,4 +1,5 @@
 import { RequestHandler } from "express";
+import { Readable } from "node:stream";
 import { AppError } from "../../middlewares/errorHandler";
 import { sendSuccess } from "../../utils/response";
 import { documentService } from "./document.service";
@@ -83,20 +84,17 @@ export const file: RequestHandler = async (req, res, next) => {
     );
     const safeFilename = fileInfo.filename.replace(/"/g, "'");
 
-
-    const remoteFileUrl = fileInfo.fileUrl;
+    const remoteFileUrl = fileInfo.signedUrl ?? fileInfo.fileUrl;
     const upstream = await fetch(remoteFileUrl).catch((error) => {
       const message = error instanceof Error ? error.message : "unknown error";
       throw new AppError(`Document file storage request failed: ${message}`, 502);
     });
-    if (!upstream.ok) {
+    if (!upstream.ok || !upstream.body) {
       throw new AppError(`Document file unavailable from storage (${upstream.status})`, 502);
     }
 
-    const body = Buffer.from(await upstream.arrayBuffer());
     res.setHeader("Content-Type", upstream.headers.get("content-type") || fileInfo.contentType);
-    res.setHeader("Content-Length", body.length);
     res.setHeader("Content-Disposition", `${fileInfo.disposition}; filename="${safeFilename}"; filename*=UTF-8''${encodeURIComponent(fileInfo.filename)}`);
-    res.send(body);
+    Readable.fromWeb(upstream.body as never).pipe(res);
   } catch (error) { next(error); }
 };

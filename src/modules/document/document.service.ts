@@ -4,7 +4,7 @@ import { AppError } from "../../middlewares/errorHandler";
 import { sendDocumentApprovedEmail } from "../../utils/email";
 import { paginated } from "../../utils/pagination";
 import { generateDocumentPreview, previewPageCount } from "../../utils/preview";
-import { uploadDocumentFile, uploadDocumentPreviewImage } from "../../utils/storage";
+import { uploadDocumentFile, uploadDocumentPreviewImage, signedCloudinaryRawDownloadUrl } from "../../utils/storage";
 import { documentRepository, NewDocumentData } from "./document.repository";
 
 type Actor = { userId: number; role: UserRole } | undefined;
@@ -200,6 +200,7 @@ export const documentService = {
 
     return {
       fileUrl: document.documentFile.fileUrl,
+      signedUrl: signedCloudinaryRawDownloadUrl(document.documentFile.fileUrl),
       contentType: fileContentType(document.documentFile.fileType),
       filename: fileName(document),
       disposition: download ? "attachment" : "inline",

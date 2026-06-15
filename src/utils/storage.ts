@@ -27,13 +27,17 @@ export async function uploadDocumentFile(file: Express.Multer.File): Promise<str
   }
 
   const filename = localDocumentFileName(file);
+  const dotIndex = filename.lastIndexOf(".");
+  const publicId = dotIndex > 0 ? filename.slice(0, dotIndex) : filename;
+  const format = dotIndex > 0 ? filename.slice(dotIndex + 1).toLowerCase() : undefined;
 
   return new Promise((resolve, reject) => {
     const upload = cloudinary.uploader.upload_stream(
       {
         resource_type: "raw",
         folder: "documents",
-        public_id: filename,
+        public_id: publicId,
+        ...(format ? { format } : {}),
         overwrite: true,
       },
       (error, result) => {
