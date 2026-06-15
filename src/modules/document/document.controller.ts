@@ -1,7 +1,7 @@
 import { RequestHandler } from "express";
+import { Readable } from "node:stream";
 import { AppError } from "../../middlewares/errorHandler";
 import { sendSuccess } from "../../utils/response";
-import { isLocalDocumentUrl, readLocalDocumentFile, signedCloudinaryRawDownloadUrl } from "../../utils/storage";
 import { documentService } from "./document.service";
 
 /** Lấy danh sách tài liệu theo bộ lọc. */
@@ -84,28 +84,32 @@ export const file: RequestHandler = async (req, res, next) => {
     );
     const safeFilename = fileInfo.filename.replace(/"/g, "'");
 
-    if (isLocalDocumentUrl(fileInfo.fileUrl)) {
-      const body = await readLocalDocumentFile(fileInfo.fileUrl);
-      res.setHeader("Content-Type", fileInfo.contentType);
-      res.setHeader("Content-Length", body.length);
-      res.setHeader("Content-Disposition", `${fileInfo.disposition}; filename="${safeFilename}"; filename*=UTF-8''${encodeURIComponent(fileInfo.filename)}`);
-      res.send(body);
-      return;
-    }
-
-    const remoteFileUrl = signedCloudinaryRawDownloadUrl(fileInfo.fileUrl) ?? fileInfo.fileUrl;
+    const remoteFileUrl = fileInfo.signedUrl ?? fileInfo.fileUrl;
     const upstream = await fetch(remoteFileUrl).catch((error) => {
       const message = error instanceof Error ? error.message : "unknown error";
       throw new AppError(`Document file storage request failed: ${message}`, 502);
     });
-    if (!upstream.ok) {
+    if (!upstream.ok || !upstream.body) {
       throw new AppError(`Document file unavailable from storage (${upstream.status})`, 502);
     }
 
-    const body = Buffer.from(await upstream.arrayBuffer());
     res.setHeader("Content-Type", upstream.headers.get("content-type") || fileInfo.contentType);
-    res.setHeader("Content-Length", body.length);
     res.setHeader("Content-Disposition", `${fileInfo.disposition}; filename="${safeFilename}"; filename*=UTF-8''${encodeURIComponent(fileInfo.filename)}`);
-    res.send(body);
+    Readable.fromWeb(upstream.body as never).pipe(res);
+  } catch (error) { next(error); }
+};
+
+/** Trả file tài liệu dưới dạng PDF (dùng cho PPTX/DOCX khi xem full trên web). */
+export const fileAsPdf: RequestHandler = async (req, res, next) => {
+  try {
+    const { buffer, filename, contentType } = await documentService.protectedFileAsPdf(
+      Number(req.params.id),
+      req.user,
+    );
+    const safeFilename = filename.replace(/"/g, "'");
+    res.setHeader("Content-Type", contentType);
+    res.setHeader("Content-Length", buffer.length);
+    res.setHeader("Content-Disposition", `inline; filename="${safeFilename}"; filename*=UTF-8''${encodeURIComponent(filename)}`);
+    res.send(buffer);
   } catch (error) { next(error); }
 };

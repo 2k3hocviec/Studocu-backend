@@ -197,3 +197,12 @@ export async function generateDocumentPreview(file: PreviewInputFile, fileType: 
 
   return renderPdfPreview(pdfBuffer);
 }
+
+/** Convert file DOCX/PPTX upload thành PDF buffer (dùng cho stream full-view). */
+export async function convertOfficeFileToPdfBuffer(
+  file: PreviewInputFile,
+  fileType: Exclude<PreviewFileType, "PDF">,
+): Promise<Buffer> {
+  validateUploadBuffer(file.buffer, fileType);
+  return convertOfficeToPdf(file.buffer, fileType);
+}

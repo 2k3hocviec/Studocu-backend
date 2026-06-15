@@ -1,12 +1,10 @@
 import { randomUUID } from "node:crypto";
-import { mkdir, readFile, writeFile } from "node:fs/promises";
+
 import path from "node:path";
 import { v2 as cloudinary } from "cloudinary";
 import { env } from "../config/env";
 import { AppError } from "../middlewares/errorHandler";
 
-const LOCAL_DOCUMENT_PREFIX = "local://documents/";
-const LOCAL_DOCUMENT_DIR = path.resolve(process.cwd(), "uploads", "documents");
 
 /** Suy ra extension file từ MIME type upload. */
 function extensionFromMime(mimetype: string) {
@@ -22,18 +20,39 @@ function localDocumentFileName(file: Express.Multer.File) {
   return `${Date.now()}-${randomUUID()}${extension}`;
 }
 
-/** Lưu file tài liệu vào local storage và trả URL nội bộ. */
+/** Lưu file tài liệu vào Cloudinary và trả URL nội bộ. */
 export async function uploadDocumentFile(file: Express.Multer.File): Promise<string> {
-  await mkdir(LOCAL_DOCUMENT_DIR, { recursive: true });
+  if (!env.CLOUDINARY_URL) {
+    throw new AppError("CLOUDINARY_URL is required for document uploads", 500);
+  }
+
   const filename = localDocumentFileName(file);
-  await writeFile(path.join(LOCAL_DOCUMENT_DIR, filename), file.buffer);
-  return `${LOCAL_DOCUMENT_PREFIX}${encodeURIComponent(filename)}`;
+  const dotIndex = filename.lastIndexOf(".");
+  const publicId = dotIndex > 0 ? filename.slice(0, dotIndex) : filename;
+  const format = dotIndex > 0 ? filename.slice(dotIndex + 1).toLowerCase() : undefined;
+
+  return new Promise((resolve, reject) => {
+    const upload = cloudinary.uploader.upload_stream(
+      {
+        resource_type: "raw",
+        folder: "documents",
+        public_id: publicId,
+        ...(format ? { format } : {}),
+        overwrite: true,
+      },
+      (error, result) => {
+        if (error || !result) {
+          reject(new AppError("Document file upload failed", 500));
+          return;
+        }
+        resolve(result.secure_url);
+      },
+    );
+
+    upload.end(file.buffer);
+  });
 }
 
-/** Kiểm tra URL tài liệu có thuộc local storage hay không. */
-export function isLocalDocumentUrl(fileUrl: string) {
-  return fileUrl.startsWith(LOCAL_DOCUMENT_PREFIX);
-}
 
 /** Tạo signed URL tạm thời để tải file raw riêng tư trên Cloudinary. */
 export function signedCloudinaryRawDownloadUrl(fileUrl: string) {
@@ -61,26 +80,9 @@ export function signedCloudinaryRawDownloadUrl(fileUrl: string) {
   }
 }
 
-/** Đọc file tài liệu từ local storage theo URL nội bộ. */
-export async function readLocalDocumentFile(fileUrl: string): Promise<Buffer> {
-  if (!isLocalDocumentUrl(fileUrl)) {
-    throw new AppError("Unsupported local document URL", 500);
-  }
-
-  const filename = decodeURIComponent(fileUrl.slice(LOCAL_DOCUMENT_PREFIX.length));
-  if (!filename || filename !== path.basename(filename)) {
-    throw new AppError("Invalid local document path", 500);
-  }
-
-  try {
-    return await readFile(path.join(LOCAL_DOCUMENT_DIR, filename));
-  } catch {
-    throw new AppError("Document file is missing from local storage", 404);
-  }
-}
 
 /** Upload ảnh preview tài liệu lên Cloudinary. */
-export async function uploadDocumentPreviewImage(buffer: Buffer, publicId: string): Promise<string> {
+export async function uploadDocumentPreviewImage(buffer: Buffer, batchId: string, pageNumber: number): Promise<string> {
   if (!env.CLOUDINARY_URL) {
     throw new AppError("CLOUDINARY_URL is required for preview uploads", 500);
   }
@@ -89,7 +91,8 @@ export async function uploadDocumentPreviewImage(buffer: Buffer, publicId: strin
     const upload = cloudinary.uploader.upload_stream(
       {
         resource_type: "image",
-        public_id: publicId,
+        folder: `academic-document-previews/${batchId}`,
+        public_id: `page-${pageNumber}`,
         format: "png",
         overwrite: true,
       },
@@ -119,7 +122,8 @@ export async function uploadAvatarImage(file: Express.Multer.File, userId: numbe
     const upload = cloudinary.uploader.upload_stream(
       {
         resource_type: "image",
-        public_id: `user-avatars/${userId}-${Date.now()}`,
+        folder: "user-avatars",
+        public_id: `${userId}-${Date.now()}`,
         format: "png",
         overwrite: true,
         transformation: [{ width: 512, height: 512, crop: "fill", gravity: "face" }],
