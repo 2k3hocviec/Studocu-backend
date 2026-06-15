@@ -98,3 +98,18 @@ export const file: RequestHandler = async (req, res, next) => {
     Readable.fromWeb(upstream.body as never).pipe(res);
   } catch (error) { next(error); }
 };
+
+/** Trả file tài liệu dưới dạng PDF (dùng cho PPTX/DOCX khi xem full trên web). */
+export const fileAsPdf: RequestHandler = async (req, res, next) => {
+  try {
+    const { buffer, filename, contentType } = await documentService.protectedFileAsPdf(
+      Number(req.params.id),
+      req.user,
+    );
+    const safeFilename = filename.replace(/"/g, "'");
+    res.setHeader("Content-Type", contentType);
+    res.setHeader("Content-Length", buffer.length);
+    res.setHeader("Content-Disposition", `inline; filename="${safeFilename}"; filename*=UTF-8''${encodeURIComponent(filename)}`);
+    res.send(buffer);
+  } catch (error) { next(error); }
+};

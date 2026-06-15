@@ -18,6 +18,7 @@ const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 20 
 const router = Router();
 router.get("/", optionalAuth, validate(listDocumentsSchema, "query"), controller.list);
 router.get("/:id/file", authenticate, validate(documentIdSchema, "params"), controller.file);
+router.get("/:id/file/pdf", authenticate, validate(documentIdSchema, "params"), controller.fileAsPdf);
 router.get("/:id", optionalAuth, validate(documentIdSchema, "params"), controller.detail);
 router.post("/", authenticate, upload.single("file"), validate(createDocumentSchema), controller.create);
 router.patch("/:id", authenticate, validate(documentIdSchema, "params"), validate(updateDocumentSchema), controller.update);

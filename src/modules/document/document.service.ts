@@ -3,8 +3,8 @@ import { randomUUID } from "node:crypto";
 import { AppError } from "../../middlewares/errorHandler";
 import { sendDocumentApprovedEmail } from "../../utils/email";
 import { paginated } from "../../utils/pagination";
-import { generateDocumentPreview, previewPageCount } from "../../utils/preview";
-import { uploadDocumentFile, uploadDocumentPreviewImage, signedCloudinaryRawDownloadUrl } from "../../utils/storage";
+import { convertOfficeFileToPdfBuffer, generateDocumentPreview, previewPageCount } from "../../utils/preview";
+import { signedCloudinaryRawDownloadUrl, uploadDocumentFile, uploadDocumentPreviewImage } from "../../utils/storage";
 import { documentRepository, NewDocumentData } from "./document.repository";
 
 type Actor = { userId: number; role: UserRole } | undefined;
@@ -205,6 +205,46 @@ export const documentService = {
       filename: fileName(document),
       disposition: download ? "attachment" : "inline",
     };
+  },
+
+  /** Tải file gốc dưới dạng Buffer (dùng để convert sang PDF cho PPTX/DOCX full-view). */
+  async loadProtectedFileBuffer(documentId: number, actor: Actor) {
+    if (!actor?.userId) throw new AppError("Must be logged in", 401);
+    const document = await documentRepository.findDetail(documentId);
+    if (!document) throw new AppError("Document not found", 404);
+    const owner = actor.userId === document.uploaderId;
+    if (document.status !== DocumentStatus.APPROVED && !owner && !isAdmin(actor)) {
+      throw new AppError("Document not found", 404);
+    }
+    if (!document.documentFile?.fileUrl) throw new AppError("Document file not found", 404);
+    if (!(await accessInfo(document, actor)).canViewFull) {
+      throw new AppError("Premium or credit is required to view the full file", 403);
+    }
+
+    const remoteUrl = signedCloudinaryRawDownloadUrl(document.documentFile.fileUrl) ?? document.documentFile.fileUrl;
+    const response = await fetch(remoteUrl).catch((error) => {
+      const message = error instanceof Error ? error.message : "unknown error";
+      throw new AppError(`Document file storage request failed: ${message}`, 502);
+    });
+    if (!response.ok) {
+      throw new AppError(`Document file unavailable from storage (${response.status})`, 502);
+    }
+    return {
+      buffer: Buffer.from(await response.arrayBuffer()),
+      fileType: document.documentFile.fileType,
+      filename: fileName(document),
+    };
+  },
+
+  /** Convert file gốc sang PDF buffer rồi trả cho client (PPTX/DOCX full-view). */
+  async protectedFileAsPdf(documentId: number, actor: Actor) {
+    const { buffer, fileType, filename } = await this.loadProtectedFileBuffer(documentId, actor);
+    if (fileType === "PDF") {
+      return { buffer, filename, contentType: "application/pdf" };
+    }
+    const converted = await convertOfficeFileToPdfBuffer({ buffer }, fileType);
+    const baseName = filename.replace(/\.(pptx|docx)$/i, "");
+    return { buffer: converted, filename: `${baseName}.pdf`, contentType: "application/pdf" };
   },
 
   /** Tạo tài liệu mới, upload file và sinh preview nếu có file đính kèm. */
