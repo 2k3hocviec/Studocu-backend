@@ -1,7 +1,6 @@
 import { RequestHandler } from "express";
 import { AppError } from "../../middlewares/errorHandler";
 import { sendSuccess } from "../../utils/response";
-import { signedCloudinaryRawDownloadUrl } from "../../utils/storage";
 import { documentService } from "./document.service";
 
 /** Lấy danh sách tài liệu theo bộ lọc. */
@@ -85,7 +84,7 @@ export const file: RequestHandler = async (req, res, next) => {
     const safeFilename = fileInfo.filename.replace(/"/g, "'");
 
 
-    const remoteFileUrl = signedCloudinaryRawDownloadUrl(fileInfo.fileUrl) ?? fileInfo.fileUrl;
+    const remoteFileUrl = fileInfo.fileUrl;
     const upstream = await fetch(remoteFileUrl).catch((error) => {
       const message = error instanceof Error ? error.message : "unknown error";
       throw new AppError(`Document file storage request failed: ${message}`, 502);
