@@ -252,7 +252,7 @@ export const documentService = {
         fileUrl,
         originalFilename: input.originalFilename ?? uploaded?.originalname ?? "document",
         fileType: input.fileType, fileSize: input.fileSize ?? uploaded?.size ?? 1,
-        totalPages, storageProvider: uploaded ? "LOCAL" : input.storageProvider,
+        totalPages, storageProvider: uploaded ? "CLOUDINARY" : input.storageProvider,
       },
       previews: generatedPreviews ?? input.previews,
     });
