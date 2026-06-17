@@ -12,12 +12,19 @@ function cloudinaryResourceType(mimetype: string, filename: string): "raw" | "im
   return "image";
 }
 
+/** Trích extension từ tên file gốc (không bao gồm dấu chấm, chữ thường). */
+function fileExtension(filename: string): string {
+  const match = /\.([a-z0-9]+)$/i.exec(filename || "");
+  return match ? match[1].toLowerCase() : "";
+}
+
 /** Upload file tài liệu gốc (PDF/DOCX/PPTX) lên Cloudinary. */
 export async function uploadDocumentFile(file: Express.Multer.File): Promise<string> {
   if (!env.CLOUDINARY_URL) {
     throw new AppError("CLOUDINARY_URL is required to upload documents", 500);
   }
   const resourceType = cloudinaryResourceType(file.mimetype, file.originalname || "");
+  const format = fileExtension(file.originalname || "");
   const publicId = `academic-documents/${Date.now()}-${randomUUID()}`;
   return new Promise<string>((resolve, reject) => {
     const upload = cloudinary.uploader.upload_stream(
@@ -27,6 +34,7 @@ export async function uploadDocumentFile(file: Express.Multer.File): Promise<str
         folder: undefined,
         use_filename: false,
         unique_filename: false,
+        ...(format ? { format } : {}),
       },
       (error, result) => {
         if (error || !result) {
