@@ -3,12 +3,34 @@ import { randomUUID } from "node:crypto";
 import { AppError } from "../../middlewares/errorHandler";
 import { sendDocumentApprovedEmail } from "../../utils/email";
 import { paginated } from "../../utils/pagination";
+import { convertOfficeBufferToPdf } from "../../utils/preview";
 import { generateDocumentPreview, previewPageCount } from "../../utils/preview";
-import { uploadDocumentFile, uploadDocumentPreviewImage } from "../../utils/storage";
+import {
+  getCachedConvertedPdf,
+  isLocalDocumentUrl,
+  readLocalDocumentFile,
+  signedCloudinaryRawDownloadUrl,
+  uploadDocumentFile,
+  uploadDocumentPreviewImage,
+  writeCachedConvertedPdf,
+} from "../../utils/storage";
 import { documentRepository, NewDocumentData } from "./document.repository";
 
 type Actor = { userId: number; role: UserRole } | undefined;
 const DOCUMENT_UNLOCK_CREDIT_COST = 1;
+
+/** Tải file từ remote URL (Cloudinary hoặc URL khác). */
+async function fetchRemoteFile(url: string): Promise<Buffer> {
+  const signed = signedCloudinaryRawDownloadUrl(url) ?? url;
+  const upstream = await fetch(signed).catch((error) => {
+    const message = error instanceof Error ? error.message : "unknown error";
+    throw new AppError(`Document file storage request failed: ${message}`, 502);
+  });
+  if (!upstream.ok) {
+    throw new AppError(`Document file unavailable from storage (${upstream.status})`, 502);
+  }
+  return Buffer.from(await upstream.arrayBuffer());
+}
 
 /** Kiểm tra actor có quyền kiểm duyệt hay không. */
 function isAdmin(actor: Actor) {
@@ -203,6 +225,54 @@ export const documentService = {
       contentType: fileContentType(document.documentFile.fileType),
       filename: fileName(document),
       disposition: download ? "attachment" : "inline",
+    };
+  },
+
+  /** Trả buffer PDF để stream về client — PDF native được trả trực tiếp,
+   *  DOCX/PPTX được convert sang PDF (cached trên disk). */
+  async getViewableBuffer(documentId: number, actor: Actor) {
+    // protectedFile đã kiểm tra quyền → throw nếu không đủ quyền
+    const { fileUrl } = await this.protectedFile(documentId, actor, false);
+    const document = await documentRepository.findDetail(documentId);
+    const fileType = document!.documentFile!.fileType;
+
+    // PDF: trả trực tiếp
+    if (fileType === "PDF") {
+      const buffer = isLocalDocumentUrl(fileUrl)
+        ? await readLocalDocumentFile(fileUrl)
+        : await fetchRemoteFile(fileUrl);
+      return {
+        buffer,
+        contentType: "application/pdf",
+        filename: fileName(document!).replace(/\.pdf$/i, ".pdf"),
+        disposition: "inline",
+      };
+    }
+
+    // DOCX / PPTX: kiểm tra cache trước
+    const cached = await getCachedConvertedPdf(documentId);
+    if (cached) {
+      return {
+        buffer: cached,
+        contentType: "application/pdf",
+        filename: fileName(document!).replace(/\.(docx|pptx)$/i, ".pdf"),
+        disposition: "inline",
+      };
+    }
+
+    // Chưa cache: tải file gốc → convert → cache → trả
+    const rawBuffer = isLocalDocumentUrl(fileUrl)
+      ? await readLocalDocumentFile(fileUrl)
+      : await fetchRemoteFile(fileUrl);
+
+    const { pdf } = await convertOfficeBufferToPdf(rawBuffer, fileType as "DOCX" | "PPTX");
+    await writeCachedConvertedPdf(documentId, pdf);
+
+    return {
+      buffer: pdf,
+      contentType: "application/pdf",
+      filename: fileName(document!).replace(/\.(docx|pptx)$/i, ".pdf"),
+      disposition: "inline",
     };
   },
 

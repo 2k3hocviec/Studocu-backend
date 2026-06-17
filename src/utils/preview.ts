@@ -95,7 +95,7 @@ function validateUploadBuffer(buffer: Buffer, fileType: PreviewFileType) {
 }
 
 /** Đếm số trang PDF bằng pdf.js. */
-async function pdfPageCount(pdfBuffer: Buffer) {
+export async function pdfPageCount(pdfBuffer: Buffer) {
   try {
     const pdfjs = await import("pdfjs-dist/legacy/build/pdf.mjs");
     const loadingTask = pdfjs.getDocument({ data: new Uint8Array(pdfBuffer) });
@@ -196,4 +196,15 @@ export async function generateDocumentPreview(file: PreviewInputFile, fileType: 
     : await convertOfficeToPdf(file.buffer, fileType);
 
   return renderPdfPreview(pdfBuffer);
+}
+
+/** Chuyển DOCX/PPTX sang PDF, trả buffer PDF kèm số trang.
+ *  Tái sử dụng logic LibreOffice từ generateDocumentPreview. */
+export async function convertOfficeBufferToPdf(
+  buffer: Buffer,
+  fileType: Exclude<PreviewFileType, "PDF">,
+): Promise<{ pdf: Buffer; totalPages: number }> {
+  const pdfBuffer = await convertOfficeToPdf(buffer, fileType);
+  const totalPages = await pdfPageCount(pdfBuffer);
+  return { pdf: pdfBuffer, totalPages };
 }

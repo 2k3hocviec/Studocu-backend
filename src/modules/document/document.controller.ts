@@ -74,38 +74,48 @@ export const unlockWithCredit: RequestHandler = async (req, res, next) => {
   try { sendSuccess(res, await documentService.unlockWithCredit(Number(req.params.id), req.user)); } catch (error) { next(error); }
 };
 
-/** Trả file tài liệu được bảo vệ qua proxy backend. */
+/** Trả file tài liệu: xem (convert DOCX/PPTX → PDF) hoặc tải về (file gốc). */
 export const file: RequestHandler = async (req, res, next) => {
   try {
-    const fileInfo = await documentService.protectedFile(
-      Number(req.params.id),
-      req.user,
-      req.query.download === "1" || req.query.download === "true",
-    );
-    const safeFilename = fileInfo.filename.replace(/"/g, "'");
+    const download = req.query.download === "1" || req.query.download === "true";
+    const safeFilename = "";
 
-    if (isLocalDocumentUrl(fileInfo.fileUrl)) {
-      const body = await readLocalDocumentFile(fileInfo.fileUrl);
-      res.setHeader("Content-Type", fileInfo.contentType);
+    if (download) {
+      // Tải về: trả file gốc (PDF/DOCX/PPTX) với extension đúng
+      const fileInfo = await documentService.protectedFile(Number(req.params.id), req.user, true);
+      const safeName = fileInfo.filename.replace(/"/g, "'");
+      if (isLocalDocumentUrl(fileInfo.fileUrl)) {
+        const body = await readLocalDocumentFile(fileInfo.fileUrl);
+        res.setHeader("Content-Type", fileInfo.contentType);
+        res.setHeader("Content-Length", body.length);
+        res.setHeader("Content-Disposition", `${fileInfo.disposition}; filename="${safeName}"; filename*=UTF-8''${encodeURIComponent(fileInfo.filename)}`);
+        res.send(body);
+        return;
+      }
+      const remoteFileUrl = signedCloudinaryRawDownloadUrl(fileInfo.fileUrl) ?? fileInfo.fileUrl;
+      const upstream = await fetch(remoteFileUrl).catch((error) => {
+        const message = error instanceof Error ? error.message : "unknown error";
+        throw new AppError(`Document file storage request failed: ${message}`, 502);
+      });
+      if (!upstream.ok) {
+        throw new AppError(`Document file unavailable from storage (${upstream.status})`, 502);
+      }
+      const body = Buffer.from(await upstream.arrayBuffer());
+      res.setHeader("Content-Type", upstream.headers.get("content-type") || fileInfo.contentType);
       res.setHeader("Content-Length", body.length);
-      res.setHeader("Content-Disposition", `${fileInfo.disposition}; filename="${safeFilename}"; filename*=UTF-8''${encodeURIComponent(fileInfo.filename)}`);
+      res.setHeader("Content-Disposition", `${fileInfo.disposition}; filename="${safeName}"; filename*=UTF-8''${encodeURIComponent(fileInfo.filename)}`);
       res.send(body);
       return;
     }
 
-    const remoteFileUrl = signedCloudinaryRawDownloadUrl(fileInfo.fileUrl) ?? fileInfo.fileUrl;
-    const upstream = await fetch(remoteFileUrl).catch((error) => {
-      const message = error instanceof Error ? error.message : "unknown error";
-      throw new AppError(`Document file storage request failed: ${message}`, 502);
-    });
-    if (!upstream.ok) {
-      throw new AppError(`Document file unavailable from storage (${upstream.status})`, 502);
-    }
-
-    const body = Buffer.from(await upstream.arrayBuffer());
-    res.setHeader("Content-Type", upstream.headers.get("content-type") || fileInfo.contentType);
-    res.setHeader("Content-Length", body.length);
-    res.setHeader("Content-Disposition", `${fileInfo.disposition}; filename="${safeFilename}"; filename*=UTF-8''${encodeURIComponent(fileInfo.filename)}`);
-    res.send(body);
+    // Xem: PDF native hoặc DOCX/PPTX đã convert sang PDF
+    const { buffer, contentType, filename } = await documentService.getViewableBuffer(
+      Number(req.params.id),
+      req.user,
+    );
+    res.setHeader("Content-Type", contentType);
+    res.setHeader("Content-Length", buffer.length);
+    res.setHeader("Content-Disposition", `inline; filename="${filename}"; filename*=UTF-8''${encodeURIComponent(filename)}`);
+    res.send(buffer);
   } catch (error) { next(error); }
 };

@@ -7,6 +7,7 @@ import { AppError } from "../middlewares/errorHandler";
 
 const LOCAL_DOCUMENT_PREFIX = "local://documents/";
 const LOCAL_DOCUMENT_DIR = path.resolve(process.cwd(), "uploads", "documents");
+const LOCAL_CONVERTED_DIR = path.resolve(process.cwd(), "uploads", "converted");
 
 /** Suy ra extension file từ MIME type upload. */
 function extensionFromMime(mimetype: string) {
@@ -135,4 +136,24 @@ export async function uploadAvatarImage(file: Express.Multer.File, userId: numbe
 
     upload.end(file.buffer);
   });
+}
+
+/** Path tới file PDF đã convert của một document. */
+export function getConvertedPdfPath(documentId: number) {
+  return path.join(LOCAL_CONVERTED_DIR, `${documentId}.pdf`);
+}
+
+/** Đọc file PDF đã convert từ cache disk. Trả null nếu chưa có. */
+export async function getCachedConvertedPdf(documentId: number): Promise<Buffer | null> {
+  try {
+    return await readFile(getConvertedPdfPath(documentId));
+  } catch {
+    return null;
+  }
+}
+
+/** Ghi file PDF đã convert xuống cache disk. */
+export async function writeCachedConvertedPdf(documentId: number, buffer: Buffer): Promise<void> {
+  await mkdir(LOCAL_CONVERTED_DIR, { recursive: true });
+  await writeFile(getConvertedPdfPath(documentId), buffer);
 }
