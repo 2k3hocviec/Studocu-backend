@@ -192,6 +192,7 @@ model DocumentFile {
   fileSize         Int             @map("file_size")
   totalPages       Int?            @map("total_pages")
   storageProvider  StorageProvider @map("storage_provider")
+  convertedPdfUrl  String?         @map("converted_pdf_url")
   createdAt        DateTime        @default(now()) @map("created_at")
   document Document @relation(fields: [documentId], references: [id])
   @@map("document_files")

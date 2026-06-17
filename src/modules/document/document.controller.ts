@@ -1,7 +1,7 @@
 import { RequestHandler } from "express";
 import { AppError } from "../../middlewares/errorHandler";
 import { sendSuccess } from "../../utils/response";
-import { isLocalDocumentUrl, readLocalDocumentFile, signedCloudinaryRawDownloadUrl } from "../../utils/storage";
+import { signedCloudinaryRawDownloadUrl } from "../../utils/storage";
 import { documentService } from "./document.service";
 
 /** Lấy danh sách tài liệu theo bộ lọc. */
@@ -84,14 +84,6 @@ export const file: RequestHandler = async (req, res, next) => {
       // Tải về: trả file gốc (PDF/DOCX/PPTX) với extension đúng
       const fileInfo = await documentService.protectedFile(Number(req.params.id), req.user, true);
       const safeName = fileInfo.filename.replace(/"/g, "'");
-      if (isLocalDocumentUrl(fileInfo.fileUrl)) {
-        const body = await readLocalDocumentFile(fileInfo.fileUrl);
-        res.setHeader("Content-Type", fileInfo.contentType);
-        res.setHeader("Content-Length", body.length);
-        res.setHeader("Content-Disposition", `${fileInfo.disposition}; filename="${safeName}"; filename*=UTF-8''${encodeURIComponent(fileInfo.filename)}`);
-        res.send(body);
-        return;
-      }
       const remoteFileUrl = signedCloudinaryRawDownloadUrl(fileInfo.fileUrl) ?? fileInfo.fileUrl;
       const upstream = await fetch(remoteFileUrl).catch((error) => {
         const message = error instanceof Error ? error.message : "unknown error";

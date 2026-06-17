@@ -6,13 +6,11 @@ import { paginated } from "../../utils/pagination";
 import { convertOfficeBufferToPdf } from "../../utils/preview";
 import { generateDocumentPreview, previewPageCount } from "../../utils/preview";
 import {
-  getCachedConvertedPdf,
-  isLocalDocumentUrl,
-  readLocalDocumentFile,
+  deleteCloudinaryAsset,
   signedCloudinaryRawDownloadUrl,
+  uploadConvertedPdfBuffer,
   uploadDocumentFile,
   uploadDocumentPreviewImage,
-  writeCachedConvertedPdf,
 } from "../../utils/storage";
 import { documentRepository, NewDocumentData } from "./document.repository";
 
@@ -228,45 +226,44 @@ export const documentService = {
     };
   },
 
-  /** Trả buffer PDF để stream về client — PDF native được trả trực tiếp,
-   *  DOCX/PPTX được convert sang PDF (cached trên disk). */
+  /** Trả buffer PDF để stream về client — dùng convertedPdfUrl trên Cloudinary
+   *  nếu có, fallback convert on-demand cho document cũ chưa có. */
   async getViewableBuffer(documentId: number, actor: Actor) {
     // protectedFile đã kiểm tra quyền → throw nếu không đủ quyền
     const { fileUrl } = await this.protectedFile(documentId, actor, false);
     const document = await documentRepository.findDetail(documentId);
     const fileType = document!.documentFile!.fileType;
+    const convertedPdfUrl = document!.documentFile!.convertedPdfUrl;
 
-    // PDF: trả trực tiếp
-    if (fileType === "PDF") {
-      const buffer = isLocalDocumentUrl(fileUrl)
-        ? await readLocalDocumentFile(fileUrl)
-        : await fetchRemoteFile(fileUrl);
+    // Đã có converted PDF trên Cloudinary: stream thẳng
+    if (convertedPdfUrl) {
+      const buffer = await fetchRemoteFile(convertedPdfUrl);
       return {
         buffer,
+        contentType: "application/pdf",
+        filename: fileName(document!).replace(/\.(pdf|docx|pptx)$/i, ".pdf"),
+        disposition: "inline",
+      };
+    }
+
+    // Chưa có converted PDF: convert on-demand rồi lưu ngược lên Cloudinary
+    const rawBuffer = await fetchRemoteFile(fileUrl);
+
+    if (fileType === "PDF") {
+      // File gốc đã là PDF nhưng DB chưa ghi nhận convertedPdfUrl → set luôn
+      await documentRepository.updateConvertedPdfUrl(documentId, fileUrl);
+      return {
+        buffer: rawBuffer,
         contentType: "application/pdf",
         filename: fileName(document!).replace(/\.pdf$/i, ".pdf"),
         disposition: "inline",
       };
     }
 
-    // DOCX / PPTX: kiểm tra cache trước
-    const cached = await getCachedConvertedPdf(documentId);
-    if (cached) {
-      return {
-        buffer: cached,
-        contentType: "application/pdf",
-        filename: fileName(document!).replace(/\.(docx|pptx)$/i, ".pdf"),
-        disposition: "inline",
-      };
-    }
-
-    // Chưa cache: tải file gốc → convert → cache → trả
-    const rawBuffer = isLocalDocumentUrl(fileUrl)
-      ? await readLocalDocumentFile(fileUrl)
-      : await fetchRemoteFile(fileUrl);
-
+    // DOCX / PPTX: convert → upload → lưu URL
     const { pdf } = await convertOfficeBufferToPdf(rawBuffer, fileType as "DOCX" | "PPTX");
-    await writeCachedConvertedPdf(documentId, pdf);
+    const newConvertedUrl = await uploadConvertedPdfBuffer(pdf);
+    await documentRepository.updateConvertedPdfUrl(documentId, newConvertedUrl);
 
     return {
       buffer: pdf,
@@ -276,7 +273,8 @@ export const documentService = {
     };
   },
 
-  /** Tạo tài liệu mới, upload file và sinh preview nếu có file đính kèm. */
+  /** Tạo tài liệu mới, upload file và sinh preview nếu có file đính kèm.
+   *  Nếu file là DOCX/PPTX, convert sang PDF ngay lúc upload và lưu lên Cloudinary. */
   async create(input: Omit<NewDocumentData, "uploaderId" | "file"> & NewDocumentData["file"], uploaderId: number, uploaded?: Express.Multer.File) {
     const requestedSchoolName = normalizeName(input.requestedSchoolName);
     const requestedSubjectName = normalizeName(input.requestedSubjectName);
@@ -296,6 +294,25 @@ export const documentService = {
     if (!fileUrl) throw new AppError("A document file or fileUrl is required", 400);
     if (!uploaded && (!input.previews?.length || !input.totalPages)) {
       throw new AppError("Preview data is required when creating a document from fileUrl", 400);
+    }
+
+    // Chuẩn bị convertedPdfUrl: PDF thì dùng chính file gốc,
+    // DOCX/PPTX thì convert + upload lên Cloudinary. Nếu lỗi, rollback file gốc.
+    let convertedPdfUrl: string | null = null;
+    if (uploaded) {
+      if (input.fileType === "PDF") {
+        convertedPdfUrl = fileUrl;
+      } else {
+        try {
+          const { pdf } = await convertOfficeBufferToPdf(uploaded.buffer, input.fileType as "DOCX" | "PPTX");
+          convertedPdfUrl = await uploadConvertedPdfBuffer(pdf);
+        } catch (error) {
+          await deleteCloudinaryAsset(fileUrl).catch(() => undefined);
+          throw error;
+        }
+      }
+    } else if (input.convertedPdfUrl !== undefined) {
+      convertedPdfUrl = input.convertedPdfUrl;
     }
 
     const previewBatchId = randomUUID();
@@ -322,7 +339,8 @@ export const documentService = {
         fileUrl,
         originalFilename: input.originalFilename ?? uploaded?.originalname ?? "document",
         fileType: input.fileType, fileSize: input.fileSize ?? uploaded?.size ?? 1,
-        totalPages, storageProvider: uploaded ? "LOCAL" : input.storageProvider,
+        totalPages, storageProvider: uploaded ? "CLOUDINARY" : input.storageProvider,
+        convertedPdfUrl,
       },
       previews: generatedPreviews ?? input.previews,
     });
@@ -414,7 +432,18 @@ export const documentService = {
     if (!isAdminActor && document.uploaderId !== userId) {
       throw new AppError("You can only delete your own document", 403);
     }
+
+    const fileUrl = document.documentFile?.fileUrl;
+    const convertedPdfUrl = document.documentFile?.convertedPdfUrl;
     await documentRepository.remove(id);
+
+    if (fileUrl) {
+      await deleteCloudinaryAsset(fileUrl).catch(() => undefined);
+    }
+    if (convertedPdfUrl && convertedPdfUrl !== fileUrl) {
+      await deleteCloudinaryAsset(convertedPdfUrl).catch(() => undefined);
+    }
+
     return { message: "Document deleted" };
   },
 

@@ -20,6 +20,7 @@ export interface NewDocumentData {
     fileSize: number;
     totalPages?: number;
     storageProvider: "CLOUDINARY" | "LOCAL" | "S3";
+    convertedPdfUrl?: string | null;
   };
   previews?: Array<{ pageNumber: number; imageUrl: string; isBlurred: boolean }>;
 }
@@ -236,6 +237,12 @@ export const documentRepository = {
       where: { userId_documentId: { userId, documentId } },
       update: { viewedAt: new Date() },
       create: { userId, documentId },
+    }),
+  /** Cập nhật URL PDF đã convert cho document file. */
+  updateConvertedPdfUrl: (documentId: number, convertedPdfUrl: string) =>
+    prisma.documentFile.update({
+      where: { documentId },
+      data: { convertedPdfUrl },
     }),
   /** Tạo tài liệu, file và các trang preview trong transaction. */
   create: (data: NewDocumentData) =>

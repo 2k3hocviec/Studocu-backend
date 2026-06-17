@@ -1,39 +1,43 @@
 import { randomUUID } from "node:crypto";
-import { mkdir, readFile, writeFile } from "node:fs/promises";
-import path from "node:path";
 import { v2 as cloudinary } from "cloudinary";
 import { env } from "../config/env";
 import { AppError } from "../middlewares/errorHandler";
 
-const LOCAL_DOCUMENT_PREFIX = "local://documents/";
-const LOCAL_DOCUMENT_DIR = path.resolve(process.cwd(), "uploads", "documents");
-const LOCAL_CONVERTED_DIR = path.resolve(process.cwd(), "uploads", "converted");
-
-/** Suy ra extension file từ MIME type upload. */
-function extensionFromMime(mimetype: string) {
-  if (mimetype === "application/pdf") return ".pdf";
-  if (mimetype === "application/vnd.openxmlformats-officedocument.wordprocessingml.document") return ".docx";
-  if (mimetype === "application/vnd.openxmlformats-officedocument.presentationml.presentation") return ".pptx";
-  return "";
+/** Suy ra resource_type Cloudinary phù hợp với định dạng tài liệu. */
+function cloudinaryResourceType(mimetype: string, filename: string): "raw" | "image" {
+  const lower = `${mimetype} ${filename}`.toLowerCase();
+  if (lower.includes("pdf") || lower.includes("officedocument") || lower.endsWith(".docx") || lower.endsWith(".pptx")) {
+    return "raw";
+  }
+  return "image";
 }
 
-/** Tạo tên file local duy nhất cho tài liệu upload. */
-function localDocumentFileName(file: Express.Multer.File) {
-  const extension = extensionFromMime(file.mimetype) || path.extname(file.originalname || "").toLowerCase();
-  return `${Date.now()}-${randomUUID()}${extension}`;
-}
-
-/** Lưu file tài liệu vào local storage và trả URL nội bộ. */
+/** Upload file tài liệu gốc (PDF/DOCX/PPTX) lên Cloudinary. */
 export async function uploadDocumentFile(file: Express.Multer.File): Promise<string> {
-  await mkdir(LOCAL_DOCUMENT_DIR, { recursive: true });
-  const filename = localDocumentFileName(file);
-  await writeFile(path.join(LOCAL_DOCUMENT_DIR, filename), file.buffer);
-  return `${LOCAL_DOCUMENT_PREFIX}${encodeURIComponent(filename)}`;
-}
-
-/** Kiểm tra URL tài liệu có thuộc local storage hay không. */
-export function isLocalDocumentUrl(fileUrl: string) {
-  return fileUrl.startsWith(LOCAL_DOCUMENT_PREFIX);
+  if (!env.CLOUDINARY_URL) {
+    throw new AppError("CLOUDINARY_URL is required to upload documents", 500);
+  }
+  const resourceType = cloudinaryResourceType(file.mimetype, file.originalname || "");
+  const publicId = `academic-documents/${Date.now()}-${randomUUID()}`;
+  return new Promise<string>((resolve, reject) => {
+    const upload = cloudinary.uploader.upload_stream(
+      {
+        resource_type: resourceType,
+        public_id: publicId,
+        folder: undefined,
+        use_filename: false,
+        unique_filename: false,
+      },
+      (error, result) => {
+        if (error || !result) {
+          reject(new AppError(`Document file upload failed: ${error?.message ?? "unknown error"}`, 500));
+          return;
+        }
+        resolve(result.secure_url);
+      },
+    );
+    upload.end(file.buffer);
+  });
 }
 
 /** Tạo signed URL tạm thời để tải file raw riêng tư trên Cloudinary. */
@@ -50,7 +54,8 @@ export function signedCloudinaryRawDownloadUrl(fileUrl: string) {
     const publicId = rawPath.replace(/^v\d+\//, "");
     if (!publicId) return null;
 
-    const extension = path.extname(publicId).replace(".", "");
+    const lastDotIndex = publicId.lastIndexOf(".");
+    const extension = lastDotIndex >= 0 ? publicId.slice(lastDotIndex + 1) : "";
     return cloudinary.utils.private_download_url(publicId, extension, {
       resource_type: "raw",
       type: "upload",
@@ -62,21 +67,46 @@ export function signedCloudinaryRawDownloadUrl(fileUrl: string) {
   }
 }
 
-/** Đọc file tài liệu từ local storage theo URL nội bộ. */
-export async function readLocalDocumentFile(fileUrl: string): Promise<Buffer> {
-  if (!isLocalDocumentUrl(fileUrl)) {
-    throw new AppError("Unsupported local document URL", 500);
-  }
+/** Trích public_id từ URL Cloudinary (raw hoặc image). Trả null nếu URL không phải Cloudinary. */
+function cloudinaryPublicIdFromUrl(fileUrl: string): { publicId: string; resourceType: "raw" | "image" } | null {
+  try {
+    const parsed = new URL(fileUrl);
+    if (!parsed.hostname.endsWith("res.cloudinary.com")) return null;
 
-  const filename = decodeURIComponent(fileUrl.slice(LOCAL_DOCUMENT_PREFIX.length));
-  if (!filename || filename !== path.basename(filename)) {
-    throw new AppError("Invalid local document path", 500);
+    const rawMarker = "/raw/upload/";
+    const imageMarker = "/image/upload/";
+    if (parsed.pathname.includes(rawMarker)) {
+      const rawPath = decodeURIComponent(parsed.pathname.slice(parsed.pathname.indexOf(rawMarker) + rawMarker.length));
+      const publicId = rawPath.replace(/^v\d+\//, "");
+      if (!publicId) return null;
+      return { publicId, resourceType: "raw" };
+    }
+    if (parsed.pathname.includes(imageMarker)) {
+      const imagePath = decodeURIComponent(parsed.pathname.slice(parsed.pathname.indexOf(imageMarker) + imageMarker.length));
+      const publicId = imagePath.replace(/^v\d+\//, "").replace(/\.[^/.]+$/, "");
+      if (!publicId) return null;
+      return { publicId, resourceType: "image" };
+    }
+    return null;
+  } catch {
+    return null;
   }
+}
+
+/** Xóa file trên Cloudinary theo URL. Không throw nếu URL không phải Cloudinary hoặc xóa lỗi. */
+export async function deleteCloudinaryAsset(fileUrl: string): Promise<void> {
+  if (!env.CLOUDINARY_URL || !fileUrl) return;
+  const parsed = cloudinaryPublicIdFromUrl(fileUrl);
+  if (!parsed) return;
 
   try {
-    return await readFile(path.join(LOCAL_DOCUMENT_DIR, filename));
-  } catch {
-    throw new AppError("Document file is missing from local storage", 404);
+    await cloudinary.uploader.destroy(parsed.publicId, {
+      resource_type: parsed.resourceType,
+      invalidate: true,
+    });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "unknown error";
+    throw new AppError(`Cloudinary delete failed: ${message}`, 502);
   }
 }
 
@@ -138,22 +168,30 @@ export async function uploadAvatarImage(file: Express.Multer.File, userId: numbe
   });
 }
 
-/** Path tới file PDF đã convert của một document. */
-export function getConvertedPdfPath(documentId: number) {
-  return path.join(LOCAL_CONVERTED_DIR, `${documentId}.pdf`);
-}
-
-/** Đọc file PDF đã convert từ cache disk. Trả null nếu chưa có. */
-export async function getCachedConvertedPdf(documentId: number): Promise<Buffer | null> {
-  try {
-    return await readFile(getConvertedPdfPath(documentId));
-  } catch {
-    return null;
+/** Upload buffer PDF (DOCX/PPTX đã convert) lên Cloudinary. */
+export async function uploadConvertedPdfBuffer(buffer: Buffer): Promise<string> {
+  if (!env.CLOUDINARY_URL) {
+    throw new AppError("CLOUDINARY_URL is required to upload converted PDFs", 500);
   }
-}
-
-/** Ghi file PDF đã convert xuống cache disk. */
-export async function writeCachedConvertedPdf(documentId: number, buffer: Buffer): Promise<void> {
-  await mkdir(LOCAL_CONVERTED_DIR, { recursive: true });
-  await writeFile(getConvertedPdfPath(documentId), buffer);
+  const publicId = `academic-documents-pdf/${Date.now()}-${randomUUID()}`;
+  return new Promise<string>((resolve, reject) => {
+    const upload = cloudinary.uploader.upload_stream(
+      {
+        resource_type: "raw",
+        public_id: publicId,
+        folder: undefined,
+        use_filename: false,
+        unique_filename: false,
+        format: "pdf",
+      },
+      (error, result) => {
+        if (error || !result) {
+          reject(new AppError(`Converted PDF upload failed: ${error?.message ?? "unknown error"}`, 500));
+          return;
+        }
+        resolve(result.secure_url);
+      },
+    );
+    upload.end(buffer);
+  });
 }
