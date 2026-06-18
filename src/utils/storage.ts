@@ -81,6 +81,7 @@ export async function uploadDocumentFile(
         use_filename: false,
         unique_filename: false,
         overwrite: false,
+        access_mode: "public",
         tags: documentTags(documentId, fileType),
         context: {
           documentId: String(documentId),
@@ -118,6 +119,7 @@ export async function uploadConvertedPdfBuffer(buffer: Buffer, documentId: numbe
         use_filename: false,
         unique_filename: false,
         overwrite: false,
+        access_mode: "public",
         tags: documentTags(documentId, "converted"),
         context: {
           documentId: String(documentId),
@@ -157,6 +159,7 @@ export async function uploadDocumentPreviewImage(
         folder: undefined,
         format: "png",
         overwrite: true,
+        access_mode: "public",
         tags: documentTags(documentId, "preview"),
         context: {
           documentId: String(documentId),
