@@ -14,9 +14,9 @@ type PreviewInputFile = { buffer: Buffer };
 export type GeneratedPreview = {
   totalPages: number;
   pages: Array<{ pageNumber: number; image: Buffer }>;
-  /** PDF buffer — có giá trị khi input là DOCX/PPTX, null khi input đã là PDF.
+  /** PDF buffer — có giá trị khi input là DOCX/PPTX, undefined khi input đã là PDF.
    *  Dùng để reuse thay vì convert lại ở Phase 3. */
-  pdfBuffer: Buffer | null;
+  pdfBuffer?: Buffer;
 };
 
 const extensionByType: Record<PreviewFileType, string> = {
