@@ -1,12 +1,11 @@
-import { DocumentStatus, ReactionType, UserRole } from "@prisma/client";
-import { randomUUID } from "node:crypto";
+import { DocumentStatus, FileType, ReactionType, UserRole } from "@prisma/client";
 import { AppError } from "../../middlewares/errorHandler";
 import { sendDocumentApprovedEmail } from "../../utils/email";
 import { paginated } from "../../utils/pagination";
 import { convertOfficeBufferToPdf } from "../../utils/preview";
 import { generateDocumentPreview, previewPageCount } from "../../utils/preview";
 import {
-  deleteCloudinaryAsset,
+  deleteAllDocumentAssets,
   signedCloudinaryRawDownloadUrl,
   uploadConvertedPdfBuffer,
   uploadDocumentFile,
@@ -262,7 +261,7 @@ export const documentService = {
 
     // DOCX / PPTX: convert → upload → lưu URL
     const { pdf } = await convertOfficeBufferToPdf(rawBuffer, fileType as "DOCX" | "PPTX");
-    const newConvertedUrl = await uploadConvertedPdfBuffer(pdf);
+    const newConvertedUrl = await uploadConvertedPdfBuffer(pdf, documentId);
     await documentRepository.updateConvertedPdfUrl(documentId, newConvertedUrl);
 
     return {
@@ -274,7 +273,9 @@ export const documentService = {
   },
 
   /** Tạo tài liệu mới, upload file và sinh preview nếu có file đính kèm.
-   *  Nếu file là DOCX/PPTX, convert sang PDF ngay lúc upload và lưu lên Cloudinary. */
+   *  Nếu file là DOCX/PPTX, convert sang PDF ngay lúc upload và lưu lên Cloudinary.
+   *  Flow 2-phase: tạo skeleton Document trước để lấy documentId, dùng documentId để
+   *  upload Cloudinary (mọi asset được tag doc:{id}), sau đó update URL thật. */
   async create(input: Omit<NewDocumentData, "uploaderId" | "file"> & NewDocumentData["file"], uploaderId: number, uploaded?: Express.Multer.File) {
     const requestedSchoolName = normalizeName(input.requestedSchoolName);
     const requestedSubjectName = normalizeName(input.requestedSubjectName);
@@ -285,48 +286,85 @@ export const documentService = {
       throw new AppError("Vui lòng chọn hoặc nhập môn học.", 400);
     }
 
-    const generatedPreview = uploaded ? await generateDocumentPreview(uploaded, input.fileType) : null;
-    const totalPages = generatedPreview?.totalPages ?? input.totalPages;
-    if (totalPages && totalPages < 3) {
-      throw new AppError("Tai lieu phai co toi thieu 3 trang.", 400);
-    }
-    const fileUrl = uploaded ? await uploadDocumentFile(uploaded) : input.fileUrl;
-    if (!fileUrl) throw new AppError("A document file or fileUrl is required", 400);
-    if (!uploaded && (!input.previews?.length || !input.totalPages)) {
-      throw new AppError("Preview data is required when creating a document from fileUrl", 400);
-    }
-
-    // Chuẩn bị convertedPdfUrl: PDF thì dùng chính file gốc,
-    // DOCX/PPTX thì convert + upload lên Cloudinary. Nếu lỗi, rollback file gốc.
-    let convertedPdfUrl: string | null = null;
     if (uploaded) {
+      // Phase 0: validate magic bytes + sinh preview từ buffer trước khi tạo DB
+      const generatedPreview = await generateDocumentPreview(uploaded, input.fileType);
+      const totalPages = generatedPreview.totalPages;
+      if (totalPages && totalPages < 3) {
+        throw new AppError("Tai lieu phai co toi thieu 3 trang.", 400);
+      }
+
+      // Phase 1: tạo skeleton Document với placeholder URL để lấy documentId
+      const skeleton = await documentRepository.createSkeleton({
+        uploaderId,
+        schoolId: input.schoolId ?? null,
+        subjectId: input.subjectId ?? null,
+        requestedSchoolName: input.schoolId ? null : requestedSchoolName,
+        requestedSubjectName: input.subjectId ? null : requestedSubjectName,
+        title: input.title,
+        description: input.description ?? null,
+        documentType: input.documentType,
+        fileType: input.fileType,
+        fileSize: uploaded.size,
+        originalFilename: uploaded.originalname || "document",
+        totalPages,
+      });
+      const documentId = skeleton.id;
+
+      // Phase 2: upload file gốc lên Cloudinary với tag doc:{documentId}
+      let fileUrl: string;
+      try {
+        fileUrl = await uploadDocumentFile(uploaded, input.fileType, documentId);
+      } catch (error) {
+        await documentRepository.remove(documentId).catch(() => undefined);
+        throw error;
+      }
+
+      // Phase 3: DOCX/PPTX → convert PDF → upload lên converted/pdf/
+      let convertedPdfUrl: string | null = null;
       if (input.fileType === "PDF") {
         convertedPdfUrl = fileUrl;
       } else {
         try {
           const { pdf } = await convertOfficeBufferToPdf(uploaded.buffer, input.fileType as "DOCX" | "PPTX");
-          convertedPdfUrl = await uploadConvertedPdfBuffer(pdf);
+          convertedPdfUrl = await uploadConvertedPdfBuffer(pdf, documentId);
         } catch (error) {
-          await deleteCloudinaryAsset(fileUrl).catch(() => undefined);
+          await deleteAllDocumentAssets(documentId).catch(() => undefined);
+          await documentRepository.remove(documentId).catch(() => undefined);
           throw error;
         }
       }
-    } else if (input.convertedPdfUrl !== undefined) {
-      convertedPdfUrl = input.convertedPdfUrl;
+
+      // Phase 4: upload preview pages lên previews/{documentId}/
+      let previews: Array<{ pageNumber: number; imageUrl: string; isBlurred: boolean }>;
+      try {
+        previews = await Promise.all(
+          generatedPreview.pages.map(async (page) => ({
+            pageNumber: page.pageNumber,
+            imageUrl: await uploadDocumentPreviewImage(page.image, documentId, page.pageNumber),
+            isBlurred: false,
+          })),
+        );
+      } catch (error) {
+        await deleteAllDocumentAssets(documentId).catch(() => undefined);
+        await documentRepository.remove(documentId).catch(() => undefined);
+        throw error;
+      }
+
+      // Phase 5: update DocumentFile với URL thật + insert previews
+      return documentRepository.finalizeUpload(documentId, {
+        fileUrl,
+        convertedPdfUrl,
+        previews,
+      });
     }
 
-    const previewBatchId = randomUUID();
-    const generatedPreviews = generatedPreview
-      ? await Promise.all(generatedPreview.pages.map(async (page) => ({
-          pageNumber: page.pageNumber,
-          imageUrl: await uploadDocumentPreviewImage(
-            page.image,
-            `academic-document-previews/${previewBatchId}/page-${page.pageNumber}`,
-          ),
-          isBlurred: false,
-        })))
-      : undefined;
-
+    // Branch tạo từ URL có sẵn (ít dùng, không qua Multer)
+    if (!input.fileUrl) throw new AppError("A document file or fileUrl is required", 400);
+    if (!input.previews?.length || !input.totalPages) {
+      throw new AppError("Preview data is required when creating a document from fileUrl", 400);
+    }
+    const convertedPdfUrl = input.convertedPdfUrl !== undefined ? input.convertedPdfUrl : null;
     return documentRepository.create({
       uploaderId,
       schoolId: input.schoolId ?? null,
@@ -334,15 +372,18 @@ export const documentService = {
       requestedSchoolName: input.schoolId ? null : requestedSchoolName,
       requestedSubjectName: input.subjectId ? null : requestedSubjectName,
       title: input.title,
-      description: input.description, documentType: input.documentType,
+      description: input.description,
+      documentType: input.documentType,
       file: {
-        fileUrl,
-        originalFilename: input.originalFilename ?? uploaded?.originalname ?? "document",
-        fileType: input.fileType, fileSize: input.fileSize ?? uploaded?.size ?? 1,
-        totalPages, storageProvider: uploaded ? "CLOUDINARY" : input.storageProvider,
+        fileUrl: input.fileUrl,
+        originalFilename: input.originalFilename ?? "document",
+        fileType: input.fileType,
+        fileSize: input.fileSize ?? 1,
+        totalPages: input.totalPages,
+        storageProvider: input.storageProvider,
         convertedPdfUrl,
       },
-      previews: generatedPreviews ?? input.previews,
+      previews: input.previews,
     });
   },
 
@@ -424,7 +465,7 @@ export const documentService = {
     };
   },
 
-  /** Xóa mềm tài liệu nếu user là chủ sở hữu hoặc admin. */
+  /** Xóa mềm tài liệu và dọn sạch toàn bộ asset Cloudinary theo tag doc:{id}. */
   async remove(id: number, userId: number, role: UserRole) {
     const document = await documentRepository.findDetail(id);
     if (!document) throw new AppError("Document not found", 404);
@@ -433,16 +474,13 @@ export const documentService = {
       throw new AppError("You can only delete your own document", 403);
     }
 
-    const fileUrl = document.documentFile?.fileUrl;
-    const convertedPdfUrl = document.documentFile?.convertedPdfUrl;
     await documentRepository.remove(id);
 
-    if (fileUrl) {
-      await deleteCloudinaryAsset(fileUrl).catch(() => undefined);
-    }
-    if (convertedPdfUrl && convertedPdfUrl !== fileUrl) {
-      await deleteCloudinaryAsset(convertedPdfUrl).catch(() => undefined);
-    }
+    // Xóa mọi asset (file gốc + converted PDF + tất cả preview) bằng tag doc:{id}
+    await deleteAllDocumentAssets(id).catch((error) => {
+      const message = error instanceof Error ? error.message : "unknown error";
+      console.error(`[cleanup] Cloudinary bulk delete failed for document ${id}: ${message}`);
+    });
 
     return { message: "Document deleted" };
   },

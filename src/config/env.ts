@@ -11,6 +11,8 @@ const envSchema = z.object({
   HOST: z.preprocess(emptyToUndefined, z.string().default("0.0.0.0")),
   NODE_ENV: z.enum(["development", "test", "production"]).default("development"),
   CLOUDINARY_URL: z.preprocess(emptyToUndefined, z.string().optional()),
+  CLOUDINARY_ROOT_FOLDER: z.preprocess(emptyToUndefined, z.string().default("studocu")),
+  CLOUDINARY_UPLOAD_PRESET: z.preprocess(emptyToUndefined, z.string().optional()),
   SOFFICE_PATH: z.preprocess(emptyToUndefined, z.string().optional()),
   POPPLER_PATH: z.preprocess(emptyToUndefined, z.string().optional()),
   PDFTOPPM_PATH: z.preprocess(emptyToUndefined, z.string().optional()),

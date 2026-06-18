@@ -244,6 +244,69 @@ export const documentRepository = {
       where: { documentId },
       data: { convertedPdfUrl },
     }),
+  /** Tạo skeleton Document + DocumentFile với placeholder URL để lấy documentId trước khi upload Cloudinary. */
+  createSkeleton: (data: {
+    uploaderId: number;
+    schoolId: number | null;
+    subjectId: number | null;
+    requestedSchoolName: string | null;
+    requestedSubjectName: string | null;
+    title: string;
+    description?: string | null;
+    documentType: DocumentType;
+    fileType: "PDF" | "DOCX" | "PPTX";
+    fileSize: number;
+    originalFilename: string;
+    totalPages?: number;
+  }) =>
+    prisma.document.create({
+      data: {
+        uploaderId: data.uploaderId,
+        schoolId: data.schoolId,
+        subjectId: data.subjectId,
+        requestedSchoolName: data.requestedSchoolName,
+        requestedSubjectName: data.requestedSubjectName,
+        title: data.title,
+        description: data.description ?? null,
+        documentType: data.documentType,
+        documentFile: {
+          create: {
+            fileUrl: "pending",
+            originalFilename: data.originalFilename,
+            fileType: data.fileType,
+            fileSize: data.fileSize,
+            totalPages: data.totalPages ?? null,
+            storageProvider: "CLOUDINARY",
+            convertedPdfUrl: null,
+          },
+        },
+      },
+      select: { id: true },
+    }),
+  /** Sau khi upload Cloudinary xong: update URL file thật + insert previews. */
+  finalizeUpload: (
+    documentId: number,
+    data: {
+      fileUrl: string;
+      convertedPdfUrl: string | null;
+      previews: Array<{ pageNumber: number; imageUrl: string; isBlurred: boolean }>;
+    },
+  ) =>
+    prisma.$transaction(async (tx) => {
+      await tx.documentFile.update({
+        where: { documentId },
+        data: { fileUrl: data.fileUrl, convertedPdfUrl: data.convertedPdfUrl },
+      });
+      if (data.previews.length) {
+        await tx.documentPreview.createMany({
+          data: data.previews.map((preview) => ({ ...preview, documentId })),
+        });
+      }
+      return tx.document.findFirstOrThrow({
+        where: { id: documentId },
+        include: detailInclude,
+      });
+    }),
   /** Tạo tài liệu, file và các trang preview trong transaction. */
   create: (data: NewDocumentData) =>
     prisma.document.create({

@@ -4,6 +4,7 @@ import multer from "multer";
 import { authenticate, optionalAuth } from "../../middlewares/auth";
 import { allowRoles } from "../../middlewares/role";
 import { validate } from "../../middlewares/validate";
+import { documentFileFilter } from "../../utils/uploadFilter";
 import * as controller from "./document.controller";
 import {
   createDocumentSchema,
@@ -14,7 +15,11 @@ import {
   updateDocumentSchema,
 } from "./document.dto";
 
-const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 20 * 1024 * 1024 } });
+const upload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 20 * 1024 * 1024 },
+  fileFilter: documentFileFilter,
+});
 const router = Router();
 router.get("/", optionalAuth, validate(listDocumentsSchema, "query"), controller.list);
 router.get("/:id/file", authenticate, validate(documentIdSchema, "params"), controller.file);
