@@ -17,7 +17,7 @@ export const loginSchema = z.object({
   email: z.string().email().transform((value) => value.toLowerCase()),
   password: z.string().min(1),
 });
-export const refreshTokenSchema = z.object({ refreshToken: z.string().min(1) });
+export const refreshTokenSchema = z.object({ refreshToken: z.string().min(1).optional() }).default({});
 export const forgotPasswordSchema = z.object({
   email: z.string().email().transform((value) => value.toLowerCase()),
 });

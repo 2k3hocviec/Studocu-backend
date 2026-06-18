@@ -29,7 +29,7 @@ const envSchema = z.object({
     z.string().url().default("https://sandbox.vnpayment.vn/paymentv2/vpcpay.html"),
   ),
   VNPAY_RETURN_URL: z.preprocess(emptyToUndefined, z.string().url().optional()),
-  FRONTEND_URL: z.preprocess(emptyToUndefined, z.string().url().default("http://localhost:5000")),
+  FRONTEND_URL: z.preprocess(emptyToUndefined, z.string().min(1).default("http://localhost:4000,http://localhost:5000")),
 });
 
 const parsed = envSchema.safeParse(process.env);
