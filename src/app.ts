@@ -8,11 +8,45 @@ import { notFound } from "./middlewares/notFound";
 import routes from "./routes";
 import { sendSuccess } from "./utils/response";
 
-const allowedOrigins = env.FRONTEND_URL.split(",").map((origin) => origin.trim()).filter(Boolean);
+function normalizeOrigin(origin: string) {
+  try {
+    const url = new URL(origin.trim());
+    return `${url.protocol}//${url.host}`;
+  } catch {
+    return origin.trim().replace(/\/+$/, "");
+  }
+}
+
+function expandOriginVariants(origin: string) {
+  const variants = new Set([origin]);
+
+  try {
+    const url = new URL(origin);
+    if (url.hostname.startsWith("www.")) {
+      url.hostname = url.hostname.slice(4);
+      variants.add(`${url.protocol}//${url.host}`);
+    } else {
+      url.hostname = `www.${url.hostname}`;
+      variants.add(`${url.protocol}//${url.host}`);
+    }
+  } catch {
+    // Ignore invalid URLs here; env validation handles the required shape.
+  }
+
+  return variants;
+}
+
+const allowedOrigins = new Set(
+  env.FRONTEND_URL.split(",")
+    .map(normalizeOrigin)
+    .filter(Boolean)
+    .flatMap((origin) => [...expandOriginVariants(origin)]),
+);
 
 const corsOptions: cors.CorsOptions = {
   origin: (origin, callback) => {
-    if (!origin || allowedOrigins.includes(origin)) {
+    const requestOrigin = origin ? normalizeOrigin(origin) : undefined;
+    if (!requestOrigin || allowedOrigins.has(requestOrigin)) {
       callback(null, true);
     } else {
       callback(new Error("Not allowed by CORS"));
