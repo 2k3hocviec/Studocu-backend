@@ -6,7 +6,7 @@ import { AppError } from "../middlewares/errorHandler";
 
 /** Thư mục gốc trên Cloudinary. Mọi asset upload mới sẽ nằm dưới prefix này. */
 function rootFolder() {
-  return (env.CLOUDINARY_ROOT_FOLDER || "studocu").replace(/^\/+|\/+$/g, "");
+  return (env.CLOUDINARY_ROOT_FOLDER || "home").replace(/^\/+|\/+$/g, "");
 }
 
 /** Sub-folder trong originals/ tương ứng với FileType. */
@@ -53,7 +53,7 @@ function buildPreviewPublicId(documentId: number, pageNumber: number) {
 
 /** Tags gắn lên asset để search/group trên Cloudinary dashboard. */
 function documentTags(documentId: number, fileType: FileType | "converted" | "preview") {
-  const tags = ["studocu", `doc:${documentId}`];
+  const tags = ["home", `doc:${documentId}`];
   if (fileType === "converted") tags.push("doctype:converted");
   else if (fileType === "preview") tags.push("doctype:preview");
   else tags.push(`doctype:${fileType.toLowerCase()}`);
@@ -287,7 +287,7 @@ export async function uploadAvatarImage(file: Express.Multer.File, userId: numbe
         folder: undefined,
         format: "png",
         overwrite: true,
-        tags: ["studocu", "avatar", `user:${userId}`],
+        tags: ["home", "avatar", `user:${userId}`],
         transformation: [{ width: 512, height: 512, crop: "fill", gravity: "face" }],
       },
       (error, result) => {
