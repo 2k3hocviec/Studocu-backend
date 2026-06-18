@@ -242,31 +242,18 @@ export async function deleteAllDocumentAssets(documentId: number): Promise<void>
   }
 }
 
-/** Tạo signed URL tạm thời để tải file raw riêng tư trên Cloudinary. */
-export function signedCloudinaryRawDownloadUrl(fileUrl: string) {
-  if (!env.CLOUDINARY_URL) return null;
-
+/** Trả về URL tải file raw trên Cloudinary.
+ *  File raw upload qua uploadDocumentFile đã mặc định access_mode = public,
+ *  URL secure_url trả về từ upload là URL dùng được trực tiếp — KHÔNG cần ký.
+ *  Hàm này chỉ verify URL có phải Cloudinary không để tránh SSRF. */
+export function signedCloudinaryRawDownloadUrl(fileUrl: string): string {
+  if (!fileUrl) return fileUrl;
   try {
     const parsed = new URL(fileUrl);
-    const marker = "/raw/upload/";
-    const markerIndex = parsed.pathname.indexOf(marker);
-    if (!parsed.hostname.endsWith("res.cloudinary.com") || markerIndex < 0) return null;
-
-    const rawPath = decodeURIComponent(parsed.pathname.slice(markerIndex + marker.length));
-    const publicId = rawPath.replace(/^v\d+\//, "");
-    if (!publicId) return null;
-
-    const lastDotIndex = publicId.lastIndexOf(".");
-    const extension = lastDotIndex >= 0 ? publicId.slice(lastDotIndex + 1) : "";
-    const baseId = extension && publicId.endsWith(`.${extension}`) ? publicId.slice(0, -extension.length - 1) : publicId;
-    return cloudinary.url(baseId, {
-      resource_type: "raw",
-      type: "upload",
-      format: extension || undefined,
-      sign_url: false,
-    });
+    if (!parsed.hostname.endsWith("res.cloudinary.com")) return fileUrl;
+    return fileUrl;
   } catch {
-    return null;
+    return fileUrl;
   }
 }
 
