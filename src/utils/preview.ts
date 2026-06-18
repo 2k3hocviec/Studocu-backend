@@ -14,6 +14,9 @@ type PreviewInputFile = { buffer: Buffer };
 export type GeneratedPreview = {
   totalPages: number;
   pages: Array<{ pageNumber: number; image: Buffer }>;
+  /** PDF buffer — có giá trị khi input là DOCX/PPTX, null khi input đã là PDF.
+   *  Dùng để reuse thay vì convert lại ở Phase 3. */
+  pdfBuffer: Buffer | null;
 };
 
 const extensionByType: Record<PreviewFileType, string> = {
@@ -188,14 +191,17 @@ async function renderPdfPreview(pdfBuffer: Buffer): Promise<GeneratedPreview> {
   }
 }
 
-/** Sinh preview tài liệu từ file upload. */
+/** Sinh preview tài liệu từ file upload. Trả PDF buffer cho DOCX/PPTX để reuse ở Phase 3. */
 export async function generateDocumentPreview(file: PreviewInputFile, fileType: PreviewFileType) {
   validateUploadBuffer(file.buffer, fileType);
-  const pdfBuffer = fileType === "PDF"
+  const pdfBuffer: Buffer = fileType === "PDF"
     ? file.buffer
     : await convertOfficeToPdf(file.buffer, fileType);
 
-  return renderPdfPreview(pdfBuffer);
+  return {
+    ...await renderPdfPreview(pdfBuffer),
+    pdfBuffer: fileType === "PDF" ? null : pdfBuffer,
+  };
 }
 
 /** Chuyển DOCX/PPTX sang PDF, trả buffer PDF kèm số trang.

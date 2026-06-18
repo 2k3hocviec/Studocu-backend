@@ -6,6 +6,7 @@ import { convertOfficeBufferToPdf } from "../../utils/preview";
 import { generateDocumentPreview, previewPageCount } from "../../utils/preview";
 import {
   deleteAllDocumentAssets,
+  generateCloudinarySignedUrl,
   signedCloudinaryRawDownloadUrl,
   uploadConvertedPdfBuffer,
   uploadDocumentFile,
@@ -127,6 +128,16 @@ async function documentDetailPayload(
     ? {
         ...document.documentFile,
         fileUrl: null,
+        /** Signed Cloudinary URL — dùng cho frontend fetch trực tiếp thay vì qua backend proxy.
+         *  Tránh buffer file trong RAM ở backend. Hết hạn sau 1 giờ. */
+        viewableUrl: (() => {
+          if (!access.canViewFull) return null;
+          const sourceUrl = document.documentFile!.convertedPdfUrl ?? document.documentFile!.fileUrl;
+          if (!sourceUrl) return null;
+          // Nếu URL đã là Cloudinary signed URL (từ download endpoint), dùng trực tiếp
+          if (sourceUrl.includes("?sig=") || sourceUrl.includes("&sig=")) return sourceUrl;
+          return generateCloudinarySignedUrl(sourceUrl, 3600);
+        })(),
       }
     : null;
 
@@ -288,6 +299,7 @@ export const documentService = {
 
     if (uploaded) {
       // Phase 0: validate magic bytes + sinh preview từ buffer trước khi tạo DB
+      // Với DOCX/PPTX: preview PDF buffer được reuse ở Phase 3 thay vì convert lại
       const generatedPreview = await generateDocumentPreview(uploaded, input.fileType);
       const totalPages = generatedPreview.totalPages;
       if (totalPages && totalPages < 3) {
@@ -320,14 +332,15 @@ export const documentService = {
         throw error;
       }
 
-      // Phase 3: DOCX/PPTX → convert PDF → upload lên converted/pdf/
+      // Phase 3: DOCX/PPTX → upload converted PDF
+      // PDF buffer đã có từ Phase 0 → reuse, KHÔNG convert lại
       let convertedPdfUrl: string | null = null;
       if (input.fileType === "PDF") {
         convertedPdfUrl = fileUrl;
       } else {
         try {
-          const { pdf } = await convertOfficeBufferToPdf(uploaded.buffer, input.fileType as "DOCX" | "PPTX");
-          convertedPdfUrl = await uploadConvertedPdfBuffer(pdf, documentId);
+          // generatedPreview.pdfBuffer đã chứa kết quả convert từ Phase 0
+          convertedPdfUrl = await uploadConvertedPdfBuffer(generatedPreview.pdfBuffer!, documentId);
         } catch (error) {
           await deleteAllDocumentAssets(documentId).catch(() => undefined);
           await documentRepository.remove(documentId).catch(() => undefined);

@@ -245,6 +245,28 @@ export async function deleteAllDocumentAssets(documentId: number): Promise<void>
   }
 }
 
+/** Sinh URL có thời hạn cho file raw trên Cloudinary.
+ *  Dùng khi frontend cần fetch thẳng từ Cloudinary thay vì qua backend proxy.
+ *  URL hết hạn sau expiresIn giây (mặc định 1 giờ). */
+export function generateCloudinarySignedUrl(fileUrl: string, expiresIn = 3600): string {
+  if (!fileUrl) return fileUrl;
+  try {
+    const parsed = new URL(fileUrl);
+    if (!parsed.hostname.endsWith("res.cloudinary.com")) return fileUrl;
+
+    const { publicId, resourceType } = cloudinaryPublicIdFromUrl(fileUrl) ?? {};
+    if (!publicId) return fileUrl;
+
+    return cloudinary.url(publicId, {
+      resource_type: resourceType ?? "raw",
+      sign_url: true,
+      expiration: expiresIn,
+    });
+  } catch {
+    return fileUrl;
+  }
+}
+
 /** Trả về URL tải file raw trên Cloudinary.
  *  File raw upload qua uploadDocumentFile đã mặc định access_mode = public,
  *  URL secure_url trả về từ upload là URL dùng được trực tiếp — KHÔNG cần ký.
